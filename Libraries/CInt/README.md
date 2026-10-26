@@ -1,7 +1,7 @@
 # CInt
 
-Source for `Cint.lib` (6,386 bytes, in 2.20-Reference `libraries/client-source/`), recreated from its
-object code. The client uses `CInt` in `CharInfo.h` and `Game.h` for values it wants hidden from memory
+Documentation of `Cint.lib` (6,386 bytes, in 2.20-Reference `libraries/client-source/`), read from its
+object code. No source is recreated yet: whether to keep CInt at all is still open. The client uses `CInt` in `CharInfo.h` and `Game.h` for values it wants hidden from memory
 scanners. The comment in CharInfo.h says this was to stop characters entering at level 0 (2003-02-20).
 
 ## What it does
@@ -17,7 +17,7 @@ scanners. The comment in CharInfo.h says this was to stop characters entering at
 - The **destructor** calls `VirtualFree(..., MEM_DECOMMIT)`. It does not release the reservation, and
   this is kept as-is.
 
-The original has no NULL check after `VirtualAlloc`, and neither does the recreation. The key comes from
+The original has no NULL check after `VirtualAlloc`. The key comes from
 `rand()`, so it shares the CRT seed the client sets with `srand(time(NULL))` in `WinMain`.
 
 ## How the .lib was read
@@ -30,14 +30,11 @@ disassembly and pseudo-C are in `decompile/Cint.c`. All symbols match the method
 ## `==` and `!=`
 
 The .lib also defines `bool CInt::operator==(const int &)` and `operator!=`, both `Get()` compared with
-the argument. In `Cint.h` their declarations are commented out, so `src/CInt.cpp` keeps their bodies
-commented out too. Restore both together if they are ever needed.
+the argument. In `Cint.h` their declarations are commented out, so the client cannot call them.
 
 ## Files
 
-- `src/CInt.cpp`: the recreated implementation.
-- `decompile/Cint.c`: hand disassembly.
+- `decompile/Cint.c`: hand disassembly and pseudo-C of every function.
 
-The header stays at `Client/Cint.h`. The client includes it as `"Cint.h"` from `CharInfo.h` and
-`Game.h`, and there is no project file yet to add an include path, so moving it would break those
-includes. Build `src/CInt.cpp` with `Client/` on the include path.
+The header stays at `Client/Cint.h`, which `CharInfo.h` and `Game.h` include as `"Cint.h"`. The client
+still links `Cint.lib` from 2.20-Reference until a decision is made.
