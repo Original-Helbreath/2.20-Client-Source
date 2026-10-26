@@ -4072,8 +4072,6 @@ void CGame::UpdateScreen_OnLoading(bool bActive)
 			MakeSprite( "Mmantle02", 9230 + 15*2, 12, TRUE);
 			MakeSprite( "Mmantle03", 9230 + 15*3, 12, TRUE);
 			MakeSprite( "MHelm1", 9300 + 15*1, 12, TRUE);// 9300번부터 투구 
-			MakeSprite( "MHelm2", 9300 + 15*2, 12, TRUE);
-			MakeSprite( "MHelm3", 9300 + 15*3, 12, TRUE);
 			MakeSprite( "MHelm4", 9300 + 15*4, 12, TRUE);
 			MakeSprite( "NMHelm1", 9300 + 15*5, 12, TRUE);
 			MakeSprite( "NMHelm2", 9300 + 15*6, 12, TRUE);
