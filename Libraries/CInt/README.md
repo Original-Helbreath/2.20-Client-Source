@@ -1,7 +1,7 @@
 # CInt
 
 Documentation of `Cint.lib` (6,386 bytes, in 2.20-Reference `libraries/client-source/`), read from its
-object code. No source is recreated yet: whether to keep CInt at all is still open. The client uses `CInt` in `CharInfo.h` and `Game.h` for values it wants hidden from memory
+object code. CInt is no longer used by the client (see below); this folder documents the original. The client uses `CInt` in `CharInfo.h` and `Game.h` for values it wants hidden from memory
 scanners. The comment in CharInfo.h says this was to stop characters entering at level 0 (2003-02-20).
 
 ## What it does
@@ -36,5 +36,12 @@ the argument. In `Cint.h` their declarations are commented out, so the client ca
 
 - `decompile/Cint.c`: hand disassembly and pseudo-C of every function.
 
-The header stays at `Client/Cint.h`, which `CharInfo.h` and `Game.h` include as `"Cint.h"`. The client
-still links `Cint.lib` from 2.20-Reference until a decision is made.
+## Replaced by plain int
+
+On branch `feature/client-libraries` every `CInt` member (`CCharInfo::m_sLevel` and 16 members of `CGame`,
+including `m_iHP`/`m_iMP`/`m_iSP`) is a plain `int`, the `Cint.h` includes are gone and `Client/Cint.h` is
+deleted, so the client no longer links `Cint.lib`. The client never called `Get()`/`Set()` directly; all uses
+went through `operator=` and `operator int()`, which plain `int` covers unchanged.
+
+Why: client-side value obfuscation only stops casual memory scanners. Real protection is the server owning
+and validating the values.

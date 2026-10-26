@@ -13,7 +13,7 @@ the build needs them replaced by SDK libraries or by their own sources (see the 
 |---|---|
 | `Client/` | The client source (Visual C++ 6, DirectDraw / DirectInput / DirectSound). |
 | `Libraries/Search/` | search.dll, the anti-cheat DLL: documentation and decompiles of both builds only. The client no longer loads it. |
-| `Libraries/CInt/` | Cint.lib (`CInt`, the hidden-int class): documentation and disassembly only for now; the client still uses `Client/Cint.h` with the prebuilt .lib. |
+| `Libraries/CInt/` | Cint.lib (`CInt`, the hidden-int class): documentation and disassembly of the original. The client now uses plain `int`. |
 | `Libraries/StrTok/` | `CStrTok` tokenizer replacing StrTok.lib and the client's old in-tree copy. |
 
 ## Branches

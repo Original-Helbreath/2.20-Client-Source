@@ -49,7 +49,6 @@
 #include "BuildItem.h"
 #include "ItemName.h"
 #include "Curse.h"
-#include "Cint.h"
 #ifdef DEF_USING_WIN_IME
 #include <RICHEDIT.H>
 #endif
@@ -675,7 +674,7 @@ public:
 	DWORD m_dwCurTime;
 	DWORD m_dwCheckConnTime, m_dwCheckSprTime, m_dwCheckChatTime;
 	DWORD m_dwDialogCloseTime;
-	CInt  m_dwLogOutCountTime;//was DWORD
+	int  m_dwLogOutCountTime;//was DWORD
 	DWORD m_dwRestartCountTime;
 	DWORD m_dwWOFtime; //v1.4
 	DWORD m_dwObserverCamTime;
@@ -699,39 +698,39 @@ public:
 
 	BOOL m_bZoomMap;
 	BOOL m_bIsProgramActive;
-	CInt m_bCommandAvailable;//was BOOL
+	int m_bCommandAvailable;//was BOOL
 	BOOL m_bSoundFlag; // 초기화 성공 여부 
 	BOOL m_bSoundStat, m_bMusicStat; // On/Off
-	CInt m_bIsItemEquipped[DEF_MAXITEMS];//was BOOL
-	CInt m_bIsItemDisabled[DEF_MAXITEMS];//was BOOL
-	CInt m_bIsGetPointingMode;//was BOOL
+	int m_bIsItemEquipped[DEF_MAXITEMS];//was BOOL
+	int m_bIsItemDisabled[DEF_MAXITEMS];//was BOOL
+	int m_bIsGetPointingMode;//was BOOL
 	BOOL m_bEnterPressed, m_bEscPressed, m_bCtrlPressed, m_bRunningMode, m_bShiftPressed;
-	CInt m_bIsDialogEnabled[41];//was BOOL
+	int m_bIsDialogEnabled[41];//was BOOL
 	BOOL m_bDialogTrans;
 	BOOL m_bIsCombatMode;
 	BOOL m_bIsSafeAttackMode;
-	CInt m_bSkillUsingStatus;//was BOOL
-	CInt m_bItemUsingStatus;//was BOOL
+	int m_bSkillUsingStatus;//was BOOL
+	int m_bItemUsingStatus;//was BOOL
 	BOOL m_bIsWhetherEffect;
 	BOOL m_bSuperAttackMode;	// 필살기 사용 모드 
 	BOOL m_bIsObserverMode, m_bIsObserverCommanded;
-	CInt m_bIsPoisoned;//was BOOL
+	int m_bIsPoisoned;//was BOOL
 	BOOL m_bIsFirstConn;							// 최초 접속인지를 알기 위함 
 	BOOL m_bIsConfusion;
 	BOOL m_bIsRedrawPDBGS;
 	BOOL m_bDrawFlagDir;
 	BOOL m_bIsCrusadeMode;
-	CInt m_bIsSpecialAbilityEnabled;//was BOOL
+	int m_bIsSpecialAbilityEnabled;//was BOOL
 	BOOL m_bInputStatus;
 	BOOL m_bToggleScreen;//2002.12.27 안상하 추가. 화면모드 바꾸기.
 	BOOL m_bIsSpecial;
 
 	BOOL m_bIsF1HelpWindowEnabled;
-	CInt m_bIsTeleportRequested;//was BOOL
+	int m_bIsTeleportRequested;//was BOOL
 	BOOL m_bIsPrevMoveBlocked;
 	BOOL m_bIsHideLocalCursor;
 	BOOL m_bIsCheckingGateway;
-	CInt m_bForceDisconn;//was BOOL
+	int m_bForceDisconn;//was BOOL
 	BOOL m_bForceAttack;
 	BOOL m_bParalyze;
 
@@ -743,9 +742,9 @@ public:
 	int m_iFightzoneNumber  ;			 // v1.4311-3 추가 변수 선언  예약된 사투장 넘버  
 	int m_iFightzoneNumberTemp  ;      // 예약되기 전까지 임시로 사투장 번호를 저장한다.
 	int m_iPlayerApprColor; // v1.4
-	CInt m_iHP;//was int			// Hit Point
-	CInt m_iMP;//was int			// Mana Point
-	CInt m_iSP;//was int			// Staminar Point
+	int m_iHP;//was int			// Hit Point
+	int m_iMP;//was int			// Mana Point
+	int m_iSP;//was int			// Staminar Point
 	int m_iAC;						// Armour Class
 	int m_iTHAC0;					// To Hit Armour Class 0
 
