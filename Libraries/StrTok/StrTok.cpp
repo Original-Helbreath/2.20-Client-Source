@@ -22,6 +22,9 @@
 CStrTok::CStrTok(char * pData, char * pSeps)
 	: m_pData(pData), m_pSeps(pSeps), m_iDataLength((int)strlen(pData)), m_iCurLoc(0)
 {
+	// Same capacity as the original char[1024]: the pointer pGet() returns keeps the same address
+	// for every token up to that size; only a longer token reallocates.
+	m_cToken.reserve(1024);
 }
 
 CStrTok::~CStrTok()

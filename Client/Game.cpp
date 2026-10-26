@@ -61,7 +61,6 @@ char _cMantleDrawingOrderOnRun[] = {0, 1, 1, 1, 1, 1, 1, 1, 1};
 
 // 속도저하를 방지하지 위한 부득이한 전역변수 
 short _tmp_sOwnerType, _tmp_sAppr1, _tmp_sAppr2, _tmp_sAppr3, _tmp_sAppr4;//, _tmp_sStatus;
-//CInt _tmp_sStatus;
 short _tmp_sStatus;
 char  _tmp_cAction, _tmp_cDir, _tmp_cFrame, _tmp_cName[12]; 
 int   _tmp_iChatIndex, _tmp_dx, _tmp_dy, _tmp_iApprColor, _tmp_iEffectType, _tmp_iEffectFrame, _tmp_dX, _tmp_dY; // 21.171 2002-6-14
@@ -440,6 +439,26 @@ void CGame::WriteSettings()
 CGame::CGame()
 {
 	int i;	
+
+	// Former CInt members: CInt started at 0, so zero them before anything else.
+	m_dwLogOutCountTime = 0;
+	m_bCommandAvailable = 0;
+	m_bIsGetPointingMode = 0;
+	m_bSkillUsingStatus = 0;
+	m_bItemUsingStatus = 0;
+	m_bIsPoisoned = 0;
+	m_bIsSpecialAbilityEnabled = 0;
+	m_bIsTeleportRequested = 0;
+	m_bForceDisconn = 0;
+	m_iHP = 0;
+	m_iMP = 0;
+	m_iSP = 0;
+	for (i = 0; i < DEF_MAXITEMS; i++) {
+		m_bIsItemEquipped[i] = 0;
+		m_bIsItemDisabled[i] = 0;
+	}
+	for (i = 0; i < 41; i++) m_bIsDialogEnabled[i] = 0;
+
 	srand( (unsigned)time( NULL ) );
 	ReadSettings();
 

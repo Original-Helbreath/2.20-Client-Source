@@ -33,7 +33,9 @@ characters or more overflowed it, which the .lib allows up to 1024.
   give one empty token, and NULL is returned only at the end.
 - **No fixed buffer:** the token lives in a `std::vector<char>` owned by the object, so long tokens are
   neither truncated nor overrun. As before, the returned pointer is valid until the next `pGet()`.
-  There is no static state.
+  There is no static state. The
+  buffer reserves 1024 bytes up front, so the returned pointer keeps the same address for every token up
+  to the original buffer size; only a longer token moves it.
 - **Verified:** a differential test ran 200,000 random inputs through the server/.lib source and through
   this class (token lengths under the 1024 limit), with 0 mismatches. It was built with current MSVC,
   not VC6.
