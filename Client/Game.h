@@ -33,7 +33,11 @@
 #include "Sprite.h"
 #include "SpriteID.h"
 #include "Misc.h"
-#include "StrTok.h"
+#include "StrSplit.h"
+#include "ClientData.h"
+#include <string>
+#include <string_view>
+#include <vector>
 #include "Msg.h"
 #include "Effect.h"
 #include "MapData.h"
@@ -440,7 +444,6 @@ public:
 	BOOL _bDraw_OnCreateNewCharacter(char * pName, short msX, short msY, int iPoint);
 	BOOL _bGetIsStringIsNumber(char * pStr);
 	BOOL bInitMagicCfgList();
-	BOOL __bDecodeContentsAndBuildItemForSaleList(char * pBuffer);
 	void _LoadShopMenuContents(char cType);
 	void PutChatScrollList(char * pMsg, char cType);
 	void RequestTeleportAndWaitData();
@@ -525,7 +528,6 @@ public:
 	// v1.4311-3 변경 사투장 예약에 대한 응답
 	void ReserveFightzoneResponseHandler(char * pData);
 	int _iGetAttackType();
-	BOOL __bDecodeBuildItemContents(char * pBuffer);
 	int _iGetBankItemCount();
 	int _iGetTotalItemNum();
 	LONG GetRegKey(HKEY key, LPCTSTR subkey, LPTSTR retdata);

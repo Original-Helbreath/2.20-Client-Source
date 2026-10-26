@@ -26,39 +26,16 @@ CGameMonitor::~CGameMonitor()
 
 int CGameMonitor::iReadBadWordFileList(char *pFn)
 {
- char * pContents, * token;
- char seps[] = "/,\t\n";
- char cReadMode = 0;
- int  iIndex = 0;
- class CStrTok * pStrTok;
- HANDLE hFile;
- FILE * pFile;
- DWORD  dwFileSize;
+ std::vector<std::string> words;
+ int  iIndex;
 
-	hFile = CreateFile(pFn, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
+	// pFn is contents\badword.json (format "bad-words"): plain JSON, no XOR obfuscation.
+	// Returns the number of words loaded (at most DEF_MAXBADWORD), or -1 when the file is
+	// missing or invalid.
+	if (ClientData::ReadStringList(pFn, "bad-words", "words", words) == false) return -1;
 
-	pFile = fopen(pFn, "rt");
-	if (pFile == NULL) return 0;
-	else {
-		pContents = new char[dwFileSize+1];
-		ZeroMemory(pContents, dwFileSize+1);
-		fread(pContents, dwFileSize, 1, pFile);
-		fclose(pFile);
-	}
-	
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	while( token != NULL ) {
-		m_pWordList[iIndex] = new class CMsg(NULL, token, NULL);
-		iIndex++;
-		if (iIndex >= DEF_MAXBADWORD) break;
-		token = pStrTok->pGet();
-	}	
-
-	delete pStrTok;
-	delete[] pContents;
+	for (iIndex = 0; iIndex < (int)words.size() && iIndex < DEF_MAXBADWORD; iIndex++)
+		m_pWordList[iIndex] = new class CMsg(NULL, (char *)words[iIndex].c_str(), NULL);
 
 	return iIndex;
 }

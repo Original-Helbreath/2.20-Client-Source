@@ -830,11 +830,9 @@ CGame::~CGame()
 BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 {
  int iIndex;
- class CStrTok * pStrTok;
  char seps[] = "&= ,\t\n";
- char * token;
 
-	// !!! 미디어 웹 파라미터때문에 이런 방식으로 커맨드 라인을 얻어와야 한다. 원래 CmdLine에는 없는 문자열이 있다.
+	// !!!미디어 웹 파라미터때문에 이런 방식으로 커맨드 라인을 얻어와야 한다. 원래 CmdLine에는 없는 문자열이 있다.
 	//pCmdLine = GetCommandLine();
 	
 	if (pCmdLine != NULL) {
@@ -847,22 +845,11 @@ BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 		
 		strcpy(G_cCmdLine, pCmdLine);
 
-		iIndex = 0;
-		pStrTok = new class CStrTok(pCmdLine, seps);
-		token = pStrTok->pGet(); 
-		while( token != NULL ) {
-			switch (iIndex) {
-			case 0:	strcpy(G_cCmdLineTokenA, token); break;
-			case 1: strcpy(G_cCmdLineTokenB, token); break;
-			case 2: strcpy(G_cCmdLineTokenC, token); break;
-			case 3: strcpy(G_cCmdLineTokenD, token); break;
-			case 4: strcpy(G_cCmdLineTokenE, token); break;
-			}
-			
-			token = pStrTok->pGet();
-			iIndex++;
-		}	
-		delete pStrTok;
+		// The first five tokens of the command line (SplitTokens keeps CStrTok's token rules).
+		char * pTokenDst[5] = { G_cCmdLineTokenA, G_cCmdLineTokenB, G_cCmdLineTokenC, G_cCmdLineTokenD, G_cCmdLineTokenE };
+		const std::vector<std::string_view> tokens = SplitTokens(pCmdLine, seps);
+		for (iIndex = 0; iIndex < 5 && iIndex < (int)tokens.size(); iIndex++)
+			ClientData::CopyToBuffer(pTokenDst[iIndex], sizeof(G_cCmdLineTokenA), std::string(tokens[iIndex]));
 	}
 
 	ZeroMemory(G_cCmdLineTokenA_Lowercase, sizeof(G_cCmdLineTokenA_Lowercase));
@@ -898,8 +885,8 @@ BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 		return FALSE;	
 	}
 
-	if(bReadLoginConfigFile("login.cfg") == FALSE) {
-		MessageBox(m_hWnd, "login.cfg file contains wrong infomation.","ERROR",MB_ICONEXCLAMATION | MB_OK);
+	if(bReadLoginConfigFile("login.json") == FALSE) {
+		MessageBox(m_hWnd, "login.json file contains wrong infomation.","ERROR",MB_ICONEXCLAMATION | MB_OK);
 		return FALSE;
 	}
 
@@ -1011,13 +998,13 @@ BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 	// 자동 업데이트시에 계속 받게 된다. 수정 요망 
 	//===============================================
 	// badword.txt 보안보강.. mando..021025
-	if(!m_Misc._iConvertFileXor("contents\\badword.txt", "contents\\badword.tmp", 35))
+	// The bad-word list is now plain JSON (contents\badword.json); the XOR obfuscation and its
+	// temporary decoded file are gone. An unreadable file is reported as before.
+	if (m_pCGameMonitor->iReadBadWordFileList("contents\\badword.json") < 0)
 	{
-		MessageBox(m_hWnd, "BADWORD.TXT file contains wrong infomation.","ERROR",MB_ICONEXCLAMATION | MB_OK);
+		MessageBox(m_hWnd, "BADWORD.JSON file contains wrong infomation.","ERROR",MB_ICONEXCLAMATION | MB_OK);
 		return FALSE;
 	}
-	m_pCGameMonitor->iReadBadWordFileList("contents\\badword.tmp");
-	DeleteFile("contents\\badword.tmp");
 
 #if DEF_LANGUAGE > 2
 	if(!m_Misc._iConvertFileXor("contents\\Curse.txt", "contents\\Curse.tmp", 35))
@@ -7957,184 +7944,43 @@ void CGame::DrawEffectLights()
 
 void CGame::_LoadShopMenuContents(char cType)
 {
- char cFileName[255], cTemp[255];
- HANDLE hFile;
- FILE * pFile;
- DWORD  dwFileSize;
- char * pBuffer;
+ char cFileName[255];
+ std::vector<ClientData::ShopItem> items;
+ bool bHasShop;
+ int  i;
 
-	ZeroMemory(cTemp, sizeof(cTemp));
+	// contents\contents<N>.json, "shop" section (docs/data-formats.md, format "contents").
+	// A missing or invalid file loads nothing, as a missing contents<N>.txt did.
 	ZeroMemory(cFileName, sizeof(cFileName));
-	wsprintf(cTemp, "contents%d", cType);
-	strcat(cFileName, "contents" );
-	strcat(cFileName, "\\");
-	strcat(cFileName, "\\");
-	strcat(cFileName, cTemp);
-	strcat(cFileName, ".txt");
+	wsprintf(cFileName, "contents\\contents%d.json", cType);
+	if (ClientData::ReadShopItems(cFileName, items, bHasShop) == false) return;
 
-	hFile = CreateFile(cFileName, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFileName, "rt");
-	if (pFile == NULL) return;
-	else {
-		pBuffer = new char[dwFileSize+1];
-		ZeroMemory(pBuffer, dwFileSize+1);
-		fread(pBuffer, dwFileSize, 1, pFile);
-
-		__bDecodeContentsAndBuildItemForSaleList(pBuffer);
-		delete[] pBuffer;
+	for (i = 0; i < (int)items.size(); i++) {
+		// v2.14: at most DEF_MAXMENUITEMS items, the rest are ignored.
+		if (i >= DEF_MAXMENUITEMS) break;
+		const ClientData::ShopItem & it = items[i];
+		m_pItemForSaleList[i] = new class CItem;
+		ClientData::CopyToBuffer(m_pItemForSaleList[i]->m_cName, sizeof(m_pItemForSaleList[i]->m_cName), it.name);
+		m_pItemForSaleList[i]->m_cItemType         = it.itemType;
+		m_pItemForSaleList[i]->m_cEquipPos         = it.equipPos;
+		m_pItemForSaleList[i]->m_sItemEffectValue1 = it.effectValue1;
+		m_pItemForSaleList[i]->m_sItemEffectValue2 = it.effectValue2;
+		m_pItemForSaleList[i]->m_sItemEffectValue3 = it.effectValue3;
+		m_pItemForSaleList[i]->m_sItemEffectValue4 = it.effectValue4;
+		m_pItemForSaleList[i]->m_sItemEffectValue5 = it.effectValue5;
+		m_pItemForSaleList[i]->m_sItemEffectValue6 = it.effectValue6;
+		m_pItemForSaleList[i]->m_wMaxLifeSpan      = (WORD)it.maxLifeSpan;
+		m_pItemForSaleList[i]->m_sSprite           = it.sprite;
+		m_pItemForSaleList[i]->m_sSpriteFrame      = it.spriteFrame;
+		m_pItemForSaleList[i]->m_wPrice            = it.price;
+		m_pItemForSaleList[i]->m_wWeight           = it.weight;
+		m_pItemForSaleList[i]->m_cSpeed            = it.speed;
+		m_pItemForSaleList[i]->m_sLevelLimit       = it.levelLimit;
+		m_pItemForSaleList[i]->m_dwCount           = 1;
 	}
-	fclose(pFile);
 }
 
-BOOL CGame::__bDecodeContentsAndBuildItemForSaleList(char * pBuffer)
-{
- char * pContents, * token;
- char seps[] = "= ,\t\n";
- char cReadModeA = 0;
- char cReadModeB = 0;
- int  iItemForSaleListIndex = 0;
- class CStrTok * pStrTok;
 
-	pContents = pBuffer;
-
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	while( token != NULL ) {
-		if (cReadModeA != 0) {
-			//
-			switch (cReadModeA) {
-			case 1:
-				switch (cReadModeB) {
-				case 1:
-					// 아이템 이름
-					ZeroMemory(m_pItemForSaleList[iItemForSaleListIndex]->m_cName, sizeof(m_pItemForSaleList[iItemForSaleListIndex]->m_cName));
-					memcpy(m_pItemForSaleList[iItemForSaleListIndex]->m_cName, token, strlen(token));
-					cReadModeB = 2;
-					break;
-				case 2:
-					// m_cItemType
-					m_pItemForSaleList[iItemForSaleListIndex]->m_cItemType = atoi(token);
-					cReadModeB = 3;
-					break;
-				case 3:
-					// m_cEquipPos
-					m_pItemForSaleList[iItemForSaleListIndex]->m_cEquipPos = atoi(token);
-					cReadModeB = 4;
-					break;
-				case 4:
-					// m_sItemEffectType
-					//m_pItemForSaleList[iItemForSaleListIndex]->m_sItemEffectType = atoi(token);안씀
-					cReadModeB = 5;
-					break;
-				case 5:
-					// m_sItemEffectValue1
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sItemEffectValue1 = atoi(token);
-					cReadModeB = 6;
-					break;
-				case 6:
-					// m_sItemEffectValue2
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sItemEffectValue2 = atoi(token);
-					cReadModeB = 7;
-					break;
-				case 7:
-					// m_sItemEffectValue3
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sItemEffectValue3 = atoi(token);
-					cReadModeB = 8;
-					break;
-				case 8:
-					// m_sItemEffectValue4
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sItemEffectValue4 = atoi(token);
-					cReadModeB = 9;
-					break;
-				case 9:
-					// m_sItemEffectValue5
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sItemEffectValue5 = atoi(token);
-					cReadModeB = 10;
-					break;
-				case 10:
-					// m_sItemEffectValue6
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sItemEffectValue6 = atoi(token);
-					cReadModeB = 11;
-					break;
-				case 11:
-					// m_wMaxLifeSpan
-					m_pItemForSaleList[iItemForSaleListIndex]->m_wMaxLifeSpan = (WORD)atoi(token);
-					cReadModeB = 12;
-					break;
-				case 12:
-					// m_sMaxFixCount
-					//m_pItemForSaleList[iItemForSaleListIndex]->m_sMaxFixCount = atoi(token);
-					cReadModeB = 13;
-					break;
-				case 13:
-					// m_sSprite
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sSprite = atoi(token);
-					cReadModeB = 14;
-					break;
-				case 14:
-					// m_sSpriteFrame
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sSpriteFrame = atoi(token);
-					cReadModeB = 15;
-					break;
-				case 15:
-					// m_wPrice
-					m_pItemForSaleList[iItemForSaleListIndex]->m_wPrice = atoi(token);
-					cReadModeB = 16;
-					break;
-				case 16:
-					// m_wWeight
-					m_pItemForSaleList[iItemForSaleListIndex]->m_wWeight = atoi(token);
-					cReadModeB = 17;
-					break;
-				case 17:
-					// Appr Value
-					//m_pItemForSaleList[iItemForSaleListIndex]->m_cApprValue = atoi(token);
-					cReadModeB = 18;
-					break;
-				case 18:
-					// m_cSpeed
-					m_pItemForSaleList[iItemForSaleListIndex]->m_cSpeed = atoi(token);
-					cReadModeB = 19;
-					break;
-
-				case 19:
-					// Level Limit
-					m_pItemForSaleList[iItemForSaleListIndex]->m_sLevelLimit = atoi(token);
-					m_pItemForSaleList[iItemForSaleListIndex]->m_dwCount = 1;
-					cReadModeA = 0;
-					cReadModeB = 0;
-					iItemForSaleListIndex++;
-					break;
-				}
-				break;
-
-			default: 
-				break;
-			}
-		}
-		else {
-			if (memcmp(token, "ItemForSale", 4) == 0) {
-				// v2.14 
-				if (iItemForSaleListIndex >= DEF_MAXMENUITEMS) {
-					delete pStrTok;
-					return FALSE;
-				}
-				cReadModeA = 1;
-				cReadModeB = 1;
-				m_pItemForSaleList[iItemForSaleListIndex] = new class CItem;
-			}
-			
-		}
-		token = pStrTok->pGet();
-	}	
-	delete pStrTok;
-
-	if ((cReadModeA != 0) || (cReadModeB != 0)) return FALSE;
-	return TRUE;
-}
 
 
 static char __cSpace[] = {8,8,8,8,8,8,8,8,8,8, 8,8,8,8,8, 8,6,8,7,8,8,9,10,9,7, 8,8,8,8,8, 8,8, 
@@ -8344,173 +8190,24 @@ void CGame::PutAlignedString(int iX1, int iX2, int iY, char * pString, short sR,
 
 BOOL CGame::bInitMagicCfgList()
 {
- char cFn[255], cTemp[255];
- char * pContents, * token;
- char seps[] = "= ,\t\n"; 
- char cReadModeA = 0;
- char cReadModeB = 0;
- int  iMagicCfgListIndex = 0;
- class CStrTok * pStrTok;
- HANDLE hFile;
- FILE * pFile;
- DWORD  dwFileSize;
+ std::vector<ClientData::MagicCfg> entries;
+ int i;
 
-	ZeroMemory(cTemp, sizeof(cTemp));
-	ZeroMemory(cFn, sizeof(cFn));
+	// contents\magiccfg.json (format "magic-config"). Missing or invalid: FALSE, as before.
+	if (ClientData::ReadMagicConfig("contents\\magiccfg.json", entries) == false) return FALSE;
 
-	strcpy(cTemp, "magiccfg.txt");
+	for (i = 0; i < (int)entries.size(); i++) {
+		const ClientData::MagicCfg & m = entries[i];
+		// A number outside the table (unchecked before) or defined twice is an error.
+		if ((m.id < 0) || (m.id >= DEF_MAXMAGICTYPE)) return FALSE;
+		if (m_pMagicCfgList[m.id] != NULL) return FALSE;
 
-	strcat(cFn, "contents");
-	strcat(cFn, "\\");
-	strcat(cFn, "\\");
-	strcat(cFn, cTemp);
-
-	hFile = CreateFile(cFn, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFn, "rt");
-	if (pFile == NULL) return FALSE;
-	else {
-		pContents = new char[dwFileSize+1];
-		ZeroMemory(pContents, dwFileSize+1);
-		fread(pContents, dwFileSize, 1, pFile);
-		fclose(pFile);
-	}
-	
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	while( token != NULL ) {
-		if (cReadModeA != 0) {
-			switch (cReadModeA) {
-			case 1:
-				switch (cReadModeB) {
-				case 1:
-					// 마법 번호 
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					
-					if (m_pMagicCfgList[atoi(token)] != NULL) {
-						// 이미 할당된 번호가 있다. 에러이다.
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					m_pMagicCfgList[atoi(token)] = new class CMagic;
-					iMagicCfgListIndex = atoi(token);
-
-					cReadModeB = 2;
-					break;
-
-				case 2:
-					// 마법 이름 
-					ZeroMemory(m_pMagicCfgList[iMagicCfgListIndex]->m_cName, sizeof(m_pMagicCfgList[iMagicCfgListIndex]->m_cName));
-					memcpy(m_pMagicCfgList[iMagicCfgListIndex]->m_cName, token, strlen(token));
-					cReadModeB = 3;
-					break;
-
-				case 3:
-					// m_sValue1
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					m_pMagicCfgList[iMagicCfgListIndex]->m_sValue1 = atoi(token);
-					cReadModeB = 4;
-					break;
-
-				case 4:
-					// m_sValue2
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					m_pMagicCfgList[iMagicCfgListIndex]->m_sValue2 = atoi(token);
-					cReadModeB = 5;
-					break;
-				
-				case 5:
-					// m_sValue3
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					m_pMagicCfgList[iMagicCfgListIndex]->m_sValue3 = atoi(token);
-					cReadModeB = 6;
-					break;
-
-				case 6://쓰지 않으므로 뺐음.
-					// m_sValue4
-					//if (_bGetIsStringIsNumber(token) == FALSE) {
-					//	delete[] pContents;
-					//	delete pStrTok;
-					//	return FALSE;
-					//}
-					//m_pMagicCfgList[iMagicCfgListIndex]->m_sValue4 = atoi(token);
-					cReadModeB = 7;
-					break;
-
-				case 7://쓰지 않으므로 뺐음.
-					// m_sValue5
-					//if (_bGetIsStringIsNumber(token) == FALSE) {
-					//	delete[] pContents;
-					//	delete pStrTok;
-					//	return FALSE;
-					//}
-					//m_pMagicCfgList[iMagicCfgListIndex]->m_sValue5 = atoi(token);
-					cReadModeB = 8;
-					break;
-
-				case 8://쓰지 않으므로 뺐음.
-					// m_sValue6
-					//if (_bGetIsStringIsNumber(token) == FALSE) {
-					//	delete[] pContents;
-					//	delete pStrTok;
-					//	return FALSE;
-					//}
-					//m_pMagicCfgList[iMagicCfgListIndex]->m_sValue6 = atoi(token);
-					cReadModeB = 9;
-					break;
-
-				case 9:
-					// m_bIsVisible
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					if( atoi(token) == 0 ) m_pMagicCfgList[iMagicCfgListIndex]->m_bIsVisible = FALSE;
-					else m_pMagicCfgList[iMagicCfgListIndex]->m_bIsVisible = TRUE;
-					cReadModeA = 0;
-					cReadModeB = 0;
-					break;
-				}
-				break;
-
-			default: 
-				break;
-			}
-		}
-		else {
-			if (memcmp(token, "magic", 5) == 0) {
-				cReadModeA = 1;
-				cReadModeB = 1;
-			}
-		}
-		token = pStrTok->pGet();
-	}	
-
-	delete pStrTok;
-	delete[] pContents;
-
-	if ((cReadModeA != 0) || (cReadModeB != 0)) {
-		return FALSE;
+		m_pMagicCfgList[m.id] = new class CMagic;
+		ClientData::CopyToBuffer(m_pMagicCfgList[m.id]->m_cName, sizeof(m_pMagicCfgList[m.id]->m_cName), m.name);
+		m_pMagicCfgList[m.id]->m_sValue1 = m.value1;
+		m_pMagicCfgList[m.id]->m_sValue2 = m.value2;
+		m_pMagicCfgList[m.id]->m_sValue3 = m.value3;
+		m_pMagicCfgList[m.id]->m_bIsVisible = m.visible;
 	}
 
 	return TRUE;
@@ -8519,7 +8216,7 @@ BOOL CGame::bInitMagicCfgList()
 BOOL CGame::bCheckImportantFile()
 {
 	HANDLE hFile;
-	hFile = CreateFile("CONTENTS\\badword.txt", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+	hFile = CreateFile("CONTENTS\\badword.json", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 	if( hFile == INVALID_HANDLE_VALUE ) return FALSE;
 	CloseHandle( hFile );
 	
@@ -8539,117 +8236,22 @@ BOOL CGame::bCheckImportantFile()
 
 BOOL CGame::bInitSkillCfgList()
 {
- char cFn[255], cTemp[255];
- char * pContents, * token;
- char seps[] = "= ,\t\n";
- char cReadModeA = 0;
- char cReadModeB = 0;
- int  iSkillCfgListIndex = 0;
- class CStrTok * pStrTok;
- HANDLE hFile;
- FILE * pFile;
- DWORD  dwFileSize;
+ std::vector<ClientData::SkillCfg> entries;
+ int i;
 
-	ZeroMemory(cTemp, sizeof(cTemp));
-	ZeroMemory(cFn, sizeof(cFn));
+	// contents\skillcfg.json (format "skill-config"). Missing or invalid: FALSE, as before.
+	if (ClientData::ReadSkillConfig("contents\\skillcfg.json", entries) == false) return FALSE;
 
-	strcpy(cTemp, "Skillcfg.txt");
-	strcat(cFn, "contents");
-	strcat(cFn, "\\");
-	strcat(cFn, "\\");
-	strcat(cFn, cTemp);
+	for (i = 0; i < (int)entries.size(); i++) {
+		const ClientData::SkillCfg & s = entries[i];
+		// A number outside the table (unchecked before) or defined twice is an error.
+		if ((s.id < 0) || (s.id >= DEF_MAXSKILLTYPE)) return FALSE;
+		if (m_pSkillCfgList[s.id] != NULL) return FALSE;
 
-	hFile = CreateFile(cFn, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFn, "rt");
-	if (pFile == NULL) return FALSE;
-	else {
-		pContents = new char[dwFileSize+1];
-		ZeroMemory(pContents, dwFileSize+1);
-		fread(pContents, dwFileSize, 1, pFile);
-		fclose(pFile);
-	}
-	
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	while( token != NULL ) {
-		if (cReadModeA != 0) {
-			switch (cReadModeA) {
-			case 1:
-				switch (cReadModeB) {
-				case 1:
-					// 기술 번호 
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					
-					if (m_pSkillCfgList[atoi(token)] != NULL) {
-						// 이미 할당된 기술이 있다. 에러이다.
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					m_pSkillCfgList[atoi(token)] = new class CSkill;
-					iSkillCfgListIndex = atoi(token);
-
-					cReadModeB = 2;
-					break;
-
-				case 2:
-					// 기술 이름 
-					ZeroMemory(m_pSkillCfgList[iSkillCfgListIndex]->m_cName, sizeof(m_pSkillCfgList[iSkillCfgListIndex]->m_cName));
-					memcpy(m_pSkillCfgList[iSkillCfgListIndex]->m_cName, token, strlen(token));
-					cReadModeB = 3;
-					break;
-
-				case 3:
-					// m_bIsUseable
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					m_pSkillCfgList[iSkillCfgListIndex]->m_bIsUseable = (BOOL)atoi(token);
-					cReadModeB = 4;
-					break;
-
-				case 4:
-					// m_cUseMethod
-					if (_bGetIsStringIsNumber(token) == FALSE) {
-						delete[] pContents;
-						delete pStrTok;
-						return FALSE;
-					}
-					m_pSkillCfgList[iSkillCfgListIndex]->m_cUseMethod = atoi(token);
-					cReadModeA = 0;
-					cReadModeB = 0;
-					break;
-				
-				}
-				break;
-
-			default: 
-				break;
-			}
-		}
-		else {
-			if (memcmp(token, "skill", 5) == 0) {
-				cReadModeA = 1;
-				cReadModeB = 1;
-			}
-		}
-		token = pStrTok->pGet();
-	}	
-
-	delete pStrTok;
-	delete[] pContents;
-
-	if ((cReadModeA != 0) || (cReadModeB != 0)) {
-		return FALSE;
+		m_pSkillCfgList[s.id] = new class CSkill;
+		ClientData::CopyToBuffer(m_pSkillCfgList[s.id]->m_cName, sizeof(m_pSkillCfgList[s.id]->m_cName), s.name);
+		m_pSkillCfgList[s.id]->m_bIsUseable = (BOOL)s.useable;
+		m_pSkillCfgList[s.id]->m_cUseMethod = s.useMethod;
 	}
 
 	return TRUE;
@@ -15574,62 +15176,22 @@ BOOL CGame::bReadLoginConfigFile(char * cFn)
 //	m_iLogServerPort = 7964;
 	return TRUE;
 #else
- FILE * pFile; 
- HANDLE hFile;
- DWORD  dwFileSize;
- char * cp, * token, cReadMode;
- char seps[] = "= ,\t\n";
+ ClientData::LoginCfg cfg;
 
-	cReadMode = 0; 
+	// cFn is login.json (format "login-config"). Missing or invalid: FALSE, as a missing file was.
+	// An address longer than 15 characters or a port of 0 is rejected, as before; a missing key
+	// leaves the value unchanged.
+	if (ClientData::ReadLoginConfig(cFn, cfg) == false) return FALSE;
 
-	hFile = CreateFile(cFn, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFn, "rt");
-	if (pFile == NULL) return FALSE;
-	cp = new char[dwFileSize+2];
-	ZeroMemory(cp, dwFileSize+2);
-	fread(cp, dwFileSize, 1, pFile);
-
-	token = strtok( cp, seps );
-	while( token != NULL )
-	{		
-		if (cReadMode != 0)
-		{
-			switch (cReadMode)
-			{
-			case 1:
-				if (strlen(token) > 15)
-				{
-					delete[] cp;
-					if (pFile != NULL) fclose(pFile);
-					return FALSE;
-				}
-				ZeroMemory(m_cLogServerAddr, sizeof(m_cLogServerAddr));
-				strcpy(m_cLogServerAddr, token);
-				cReadMode = 0;
-				break;
-			case 2:
-				m_iLogServerPort = atoi(token);
-				if (m_iLogServerPort == 0)
-				{
-					delete[] cp;
-					if (pFile != NULL) fclose(pFile);
-					return FALSE;
-				}
-				cReadMode = 0;
-				break;
-			}
-		}	
-		else {
-			if (memcmp(token, "log-server-address",18) == 0) cReadMode = 1;
-			if (memcmp(token, "log-server-port",15) == 0)    cReadMode = 2;
-		}
-		token = strtok( NULL, seps );
+	if (cfg.hasAddress) {
+		if (cfg.address.size() > 15) return FALSE;
+		ZeroMemory(m_cLogServerAddr, sizeof(m_cLogServerAddr));
+		strcpy(m_cLogServerAddr, cfg.address.c_str());
 	}
-	delete[] cp;
-	if (pFile != NULL) fclose(pFile);
+	if (cfg.hasPort) {
+		m_iLogServerPort = cfg.port;
+		if (m_iLogServerPort == 0) return FALSE;
+	}
 	return TRUE;
 #endif
 }
@@ -18887,118 +18449,57 @@ void CGame::DrawChatMsgs(short sX, short sY, short dX, short dY)
 
 
 
+
+
+
+
+
+
+
+
+
 void CGame::_LoadTextDlgContents(int cType)
 {
- char * pContents, * token, cTemp[120], cFileName[120];
- char   seps[] = "\n";
- int    iIndex = 0, i;
- class  CStrTok * pStrTok;
- DWORD  dwFileSize;
- HANDLE hFile;
- FILE * pFile;
+ char   cFileName[120];
+ std::vector<std::string> lines;
+ int    iIndex, i;
 
 	for (i = 0; i < DEF_TEXTDLGMAXLINES; i++) {
-		if (m_pMsgTextList[i] != NULL) 
+		if (m_pMsgTextList[i] != NULL)
 			delete m_pMsgTextList[i];
 		m_pMsgTextList[i] = NULL;
 	}
 
-	//// cType에 따라 맞는 내용을 로드한다. 
-	ZeroMemory(cTemp, sizeof(cTemp));
+	// contents\contents<N>.json, "lines" (format "contents"). Missing or invalid: nothing loaded.
 	ZeroMemory(cFileName, sizeof(cFileName));
+	wsprintf(cFileName, "contents\\contents%d.json", cType);
+	if (ClientData::ReadStringList(cFileName, "contents", "lines", lines) == false) return;
 
-	wsprintf(cTemp, "contents%d", cType);
-
-	strcat(cFileName, "contents");
-	strcat(cFileName, "\\");
-	strcat(cFileName, "\\");
-	strcat(cFileName, cTemp);
-	strcat(cFileName, ".txt");
-
-	hFile = CreateFile(cFileName, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFileName, "rt");
-	if (pFile == NULL) return;
-	else { 
-		pContents = new char[dwFileSize+1];
-		ZeroMemory(pContents, dwFileSize+1);
-		fread(pContents, dwFileSize, 1, pFile);
-	}
-
-	fclose(pFile);
-	////
-
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
- 
-	while( token != NULL ) {
-		m_pMsgTextList[iIndex] = new class CMsg(NULL, token, NULL);
-		token = pStrTok->pGet();
-		iIndex++;
-	}	
-
-	delete pStrTok;
-	delete[] pContents;
+	for (iIndex = 0; iIndex < (int)lines.size() && iIndex < DEF_TEXTDLGMAXLINES; iIndex++)
+		m_pMsgTextList[iIndex] = new class CMsg(NULL, (char *)lines[iIndex].c_str(), NULL);
 }
 
 
 
 int CGame::_iLoadTextDlgContents2(int iType)
 {
- char * pContents, * token, cTemp[120], cFileName[120];
- char   seps[] = "\n";
- int    iIndex = 0, i;
- class  CStrTok * pStrTok;
- DWORD  dwFileSize;
- HANDLE hFile;
- FILE * pFile;
+ char   cFileName[120];
+ std::vector<std::string> lines;
+ int    iIndex, i;
 
 	for (i = 0; i < DEF_TEXTDLGMAXLINES; i++) {
-		if (m_pMsgTextList2[i] != NULL) 
+		if (m_pMsgTextList2[i] != NULL)
 			delete m_pMsgTextList2[i];
 		m_pMsgTextList2[i] = NULL;
 	}
 
-	//// cType에 따라 맞는 내용을 로드한다. 
-	ZeroMemory(cTemp, sizeof(cTemp));
+	// contents\contents<N>.json, "lines" (format "contents"). Missing or invalid: -1.
 	ZeroMemory(cFileName, sizeof(cFileName));
+	wsprintf(cFileName, "contents\\contents%d.json", iType);
+	if (ClientData::ReadStringList(cFileName, "contents", "lines", lines) == false) return -1;
 
-	wsprintf(cTemp, "contents%d", iType);
-
-	strcat(cFileName, "contents");
-	strcat(cFileName, "\\");
-	strcat(cFileName, "\\");
-	strcat(cFileName, cTemp);
-	strcat(cFileName, ".txt");
-
-	hFile = CreateFile(cFileName, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFileName, "rt");
-	if (pFile == NULL) return -1;
-	else {
-		pContents = new char[dwFileSize+1];
-		if (pContents == NULL) return -1;
-		
-		ZeroMemory(pContents, dwFileSize+1);
-		fread(pContents, dwFileSize, 1, pFile);
-	}
-	fclose(pFile);
-
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	
-	while( token != NULL ) {
-		m_pMsgTextList2[iIndex] = new class CMsg(NULL, token, NULL);
-		token = pStrTok->pGet();
-		iIndex++;
-	}	
-
-	delete pStrTok;
-	delete[] pContents;
+	for (iIndex = 0; iIndex < (int)lines.size() && iIndex < DEF_TEXTDLGMAXLINES; iIndex++)
+		m_pMsgTextList2[iIndex] = new class CMsg(NULL, (char *)lines[iIndex].c_str(), NULL);
 
 	return iIndex;
 }
@@ -19008,55 +18509,20 @@ int CGame::_iLoadTextDlgContents2(int iType)
 
 void CGame::_LoadGameMsgTextContents()
 {
- char * pContents, * token, cTemp[120], cFileName[120];
- char   seps[] = ";\n";
- int    iIndex = 0, i;
- class  CStrTok * pStrTok;
- DWORD  dwFileSize;
- HANDLE hFile;
- FILE * pFile;
+ std::vector<std::string> messages;
+ int    iIndex, i;
 
 	for (i = 0; i < DEF_MAXGAMEMSGS; i++) {
-		if (m_pGameMsgList[i] != NULL) 
+		if (m_pGameMsgList[i] != NULL)
 			delete m_pGameMsgList[i];
 		m_pGameMsgList[i] = NULL;
 	}
 
-	ZeroMemory(cTemp, sizeof(cTemp));
-	ZeroMemory(cFileName, sizeof(cFileName));
+	// contents\GameMsgList.json, "messages" (format "game-messages"). Missing or invalid: nothing.
+	if (ClientData::ReadStringList("contents\\GameMsgList.json", "game-messages", "messages", messages) == false) return;
 
-	strcpy(cTemp, "GameMsgList");
-
-	strcat(cFileName, "contents");
-	strcat(cFileName, "\\");
-	strcat(cFileName, "\\");
-	strcat(cFileName, cTemp);
-	strcat(cFileName, ".txt"); 
-
-	hFile = CreateFile(cFileName, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFileName, "rt");
-	if (pFile == NULL) return;
-	else {
-		pContents = new char[dwFileSize+1];
-		ZeroMemory(pContents, dwFileSize+1);
-		fread(pContents, dwFileSize, 1, pFile);
-	} 
-
-	fclose(pFile);
-
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	while( token != NULL ) {
-		m_pGameMsgList[iIndex] = new class CMsg(NULL, token, NULL);
-		token = pStrTok->pGet();
-		iIndex++;
-	}	
-
-	delete pStrTok;
-	delete[] pContents;
+	for (iIndex = 0; iIndex < (int)messages.size() && iIndex < DEF_MAXGAMEMSGS; iIndex++)
+		m_pGameMsgList[iIndex] = new class CMsg(NULL, (char *)messages[iIndex].c_str(), NULL);
 }
 
 void CGame::DlgBoxClick_Party(short msX, short msY)
@@ -23996,50 +23462,43 @@ int CGame::_iGetBankItemCount()
 
 BOOL CGame::_bDecodeBuildItemContents()
 {
- char cFileName[255], cTemp[255];
- HANDLE hFile;
- FILE * pFile;
- DWORD  dwFileSize;
- char * pBuffer;
- BOOL   bRet;
- int    i;
- 
+ std::vector<ClientData::BuildItem> items;
+ int    i, e;
+
 	// v1.41
-	for (i = 0; i < DEF_MAXBUILDITEMS; i++) 
+	for (i = 0; i < DEF_MAXBUILDITEMS; i++)
 	if (m_pBuildItemList[i] != NULL) {
 		delete m_pBuildItemList[i];
 		m_pBuildItemList[i] = NULL;
 	}
 
-	ZeroMemory(cTemp, sizeof(cTemp));
-	ZeroMemory(cFileName, sizeof(cFileName));
+	// contents\BItemcfg.json (format "build-items"). Missing or invalid: FALSE, as before.
+	if (ClientData::ReadBuildItems("contents\\BItemcfg.json", items) == false) return FALSE;
+	if (items.size() > DEF_MAXBUILDITEMS) return FALSE;   // the old loader wrote past the array
 
-	strcpy(cTemp, "BItemcfg");
-	
-	strcat(cFileName, "contents");
-	strcat(cFileName, "\\");
-	strcat(cFileName, "\\");
-	strcat(cFileName, cTemp);
-	strcat(cFileName, ".txt");
+	for (i = 0; i < (int)items.size(); i++) {
+		const ClientData::BuildItem & it = items[i];
+		char * pElementName[6];
+		m_pBuildItemList[i] = new class CBuildItem;
+		pElementName[0] = m_pBuildItemList[i]->m_cElementName1;
+		pElementName[1] = m_pBuildItemList[i]->m_cElementName2;
+		pElementName[2] = m_pBuildItemList[i]->m_cElementName3;
+		pElementName[3] = m_pBuildItemList[i]->m_cElementName4;
+		pElementName[4] = m_pBuildItemList[i]->m_cElementName5;
+		pElementName[5] = m_pBuildItemList[i]->m_cElementName6;
 
-	hFile = CreateFile(cFileName, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFileName, "rt");
-	if (pFile == NULL) return FALSE;
-	else {
-		pBuffer = new char[dwFileSize+1];
-		ZeroMemory(pBuffer, dwFileSize+1);
-		fread(pBuffer, dwFileSize, 1, pFile);
-
-		bRet = __bDecodeBuildItemContents(pBuffer);
-		delete[] pBuffer;
+		ClientData::CopyToBuffer(m_pBuildItemList[i]->m_cName, sizeof(m_pBuildItemList[i]->m_cName), it.name);
+		m_pBuildItemList[i]->m_iSkillLimit = it.skillLimit;
+		for (e = 0; e < 6; e++) {
+			ClientData::CopyToBuffer(pElementName[e], sizeof(m_pBuildItemList[i]->m_cElementName1), it.elements[e].name);
+			m_pBuildItemList[i]->m_iElementCount[e + 1] = it.elements[e].count;   // index 0 is unused
+		}
+		m_pBuildItemList[i]->m_iSprH      = it.sprite;
+		m_pBuildItemList[i]->m_iSprFrame  = it.spriteFrame;
+		m_pBuildItemList[i]->m_iMaxSkill  = it.maxSkill;
 	}
 
-	fclose(pFile);
-
-	return bRet;
+	return TRUE;
 }
 
 BOOL CGame::_bCheckBuildItemStatus()
@@ -24287,143 +23746,7 @@ BOOL CGame::_ItemDropHistory(char * ItemName)
 }
 
 
-BOOL CGame::__bDecodeBuildItemContents(char *pBuffer)
-{
- char * pContents, * token;
- char seps[] = "= ,\t\n";
- char cReadModeA = 0;
- char cReadModeB = 0;
- int  iIndex = 0;
- class CStrTok * pStrTok;
 
-	pContents = pBuffer;
-
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	
-	while( token != NULL ) {
-		if (cReadModeA != 0) {
-			//
-			switch (cReadModeA) {
-			case 1:
-				switch (cReadModeB) {
-				case 1:
-					// 아이템 이름
-					ZeroMemory(m_pBuildItemList[iIndex]->m_cName, sizeof(m_pBuildItemList[iIndex]->m_cName));
-					memcpy(m_pBuildItemList[iIndex]->m_cName, token, strlen(token));
-					cReadModeB = 2;
-					break;
-				case 2:
-					// 아이템 제작 스킬 리미트 
-					m_pBuildItemList[iIndex]->m_iSkillLimit = atoi(token);
-					cReadModeB = 3;
-					break;
-				case 3:
-					// m_cElementName1
-					ZeroMemory(m_pBuildItemList[iIndex]->m_cElementName1, sizeof(m_pBuildItemList[iIndex]->m_cElementName1));
-					memcpy(m_pBuildItemList[iIndex]->m_cElementName1, token, strlen(token));
-					cReadModeB = 4;
-					break;
-				case 4:
-					// m_iElementCount1
-					m_pBuildItemList[iIndex]->m_iElementCount[1] = atoi(token);
-					cReadModeB = 5;
-					break;
-				case 5:
-					// m_cElementName2
-					ZeroMemory(m_pBuildItemList[iIndex]->m_cElementName2, sizeof(m_pBuildItemList[iIndex]->m_cElementName2));
-					memcpy(m_pBuildItemList[iIndex]->m_cElementName2, token, strlen(token));
-					cReadModeB = 6;
-					break;
-				case 6:
-					// m_iElementCount2
-					m_pBuildItemList[iIndex]->m_iElementCount[2] = atoi(token);
-					cReadModeB = 7;
-					break;
-				case 7:
-					// m_cElementName3
-					ZeroMemory(m_pBuildItemList[iIndex]->m_cElementName3, sizeof(m_pBuildItemList[iIndex]->m_cElementName3));
-					memcpy(m_pBuildItemList[iIndex]->m_cElementName3, token, strlen(token));
-					cReadModeB = 8;
-					break;
-				case 8:
-					// m_iElementCount3
-					m_pBuildItemList[iIndex]->m_iElementCount[3] = atoi(token);
-					cReadModeB = 9;
-					break;
-				case 9:
-					// m_cElementName4
-					ZeroMemory(m_pBuildItemList[iIndex]->m_cElementName4, sizeof(m_pBuildItemList[iIndex]->m_cElementName4));
-					memcpy(m_pBuildItemList[iIndex]->m_cElementName4, token, strlen(token));
-					cReadModeB = 10;
-					break;
-				case 10:
-					// m_iElementCount4
-					m_pBuildItemList[iIndex]->m_iElementCount[4] = atoi(token);
-					cReadModeB = 11;
-					break;
-				case 11:
-					// m_cElementName5
-					ZeroMemory(m_pBuildItemList[iIndex]->m_cElementName5, sizeof(m_pBuildItemList[iIndex]->m_cElementName5));
-					memcpy(m_pBuildItemList[iIndex]->m_cElementName5, token, strlen(token));
-					cReadModeB = 12;
-					break;
-				case 12:
-					// m_iElementCount5
-					m_pBuildItemList[iIndex]->m_iElementCount[5] = atoi(token);
-					cReadModeB = 13;
-					break;
-				case 13:
-					// m_cElementName6
-					ZeroMemory(m_pBuildItemList[iIndex]->m_cElementName6, sizeof(m_pBuildItemList[iIndex]->m_cElementName6));
-					memcpy(m_pBuildItemList[iIndex]->m_cElementName6, token, strlen(token));
-					cReadModeB = 14;
-					break;
-				case 14:
-					// m_iElementCount6
-					m_pBuildItemList[iIndex]->m_iElementCount[6] = atoi(token);
-					cReadModeB = 15;
-					break;
-
-				case 15:
-					m_pBuildItemList[iIndex]->m_iSprH = atoi(token);
-					cReadModeB = 16;
-					break;
-
-				case 16:
-					m_pBuildItemList[iIndex]->m_iSprFrame = atoi(token);
-					cReadModeB = 17;
-					break;
-
-				case 17:
-					m_pBuildItemList[iIndex]->m_iMaxSkill = atoi(token);
-					
-					cReadModeA = 0;
-					cReadModeB = 0;
-					iIndex++;
-					break;
-				}
-				break;
-
-			default: 
-				break;
-			}
-		}
-		else {
-			if (memcmp(token, "BuildItem", 9) == 0) {
-				cReadModeA = 1;
-				cReadModeB = 1;
-				m_pBuildItemList[iIndex] = new class CBuildItem;
-			}
-		}
-		token = pStrTok->pGet();
-	}	
-
-	delete pStrTok;
-
-	if ((cReadModeA != 0) || (cReadModeB != 0)) return FALSE;
-	return TRUE;
-}
 
 
 BOOL CGame::_bCheckCurrentBuildItemStatus()
@@ -26475,54 +25798,23 @@ void CGame::UpdateScreen_OnCreateNewCharacter()
 
 void CGame::_LoadAgreementTextContents(char cType)
 {
- char * pContents, * token, cTemp[120], cFileName[120];
- char   seps[] = "\n";
- int    iIndex = 0, i;
- class  CStrTok * pStrTok;
- DWORD  dwFileSize;
- HANDLE hFile;
- FILE * pFile;
+ char   cFileName[120];
+ std::vector<std::string> lines;
+ int    iIndex, i;
 
 	for (i = 0; i < DEF_TEXTDLGMAXLINES; i++) {
-		if (m_pAgreeMsgTextList[i] != NULL) 
+		if (m_pAgreeMsgTextList[i] != NULL)
 			delete m_pAgreeMsgTextList[i];
 		m_pAgreeMsgTextList[i] = NULL;
 	}
 
-	//// cType에 따라 맞는 내용을 로드한다. 
-	ZeroMemory(cTemp, sizeof(cTemp));
+	// contents\contents<N>.json, "lines" (format "contents"). Missing or invalid: nothing loaded.
 	ZeroMemory(cFileName, sizeof(cFileName));
+	wsprintf(cFileName, "contents\\contents%d.json", cType);
+	if (ClientData::ReadStringList(cFileName, "contents", "lines", lines) == false) return;
 
-	wsprintf(cTemp, "contents%d", cType);
-
-	strcat(cFileName, "contents");
-	strcat(cFileName, "\\");
-	strcat(cFileName, "\\");
-	strcat(cFileName, cTemp);
-	strcat(cFileName, ".txt");
-
-	hFile = CreateFile(cFileName, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	dwFileSize = GetFileSize(hFile, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-
-	pFile = fopen(cFileName, "rt");
-	if (pFile == NULL) return;
-	else {
-		pContents = new char[dwFileSize+1];
-		ZeroMemory(pContents, dwFileSize+1);
-		fread(pContents, dwFileSize, 1, pFile);
-	}
-
-	fclose(pFile);
-	pStrTok = new class CStrTok(pContents, seps);
-	token = pStrTok->pGet();
-	while( token != NULL ) {
-		m_pAgreeMsgTextList[iIndex] = new class CMsg(NULL, token, NULL);
-		token = pStrTok->pGet();
-		iIndex++;
-	}	
-	delete pStrTok;
-	delete[] pContents;
+	for (iIndex = 0; iIndex < (int)lines.size() && iIndex < DEF_TEXTDLGMAXLINES; iIndex++)
+		m_pAgreeMsgTextList[iIndex] = new class CMsg(NULL, (char *)lines[iIndex].c_str(), NULL);
 }
 
 void CGame::UpdateScreen_OnAgreement()
@@ -28757,18 +28049,18 @@ void CGame::OnKeyUp(WPARAM wParam)
 			m_DInput.UpdateMouseState(&msX, &msY, &msZ, &cLB, &cRB);
 			if( m_bIsDialogEnabled[10] == TRUE && (msX >= sX + 20) && (msX <= sX + 360) && (msY >= sY + 35) && (msY <= sY + 139) )
 			{
-				CStrTok *pStrTok;
-				char   * token, cBuff[64];
+				char   cBuff[64];
 				char   seps[] = ":";
 				int i = (139-msY+sY)/13;
 				if( m_pChatScrollList[i + m_stDialogBoxInfo[10].sView] == NULL ) return;
 				if( m_pChatScrollList[i + m_stDialogBoxInfo[10].sView]->m_pMsg[0] == ' ' ) i++;
 				strcpy(cBuff, m_pChatScrollList[i + m_stDialogBoxInfo[10].sView]->m_pMsg);
-				pStrTok = new class CStrTok(cBuff, seps);
-				token = pStrTok->pGet();
-				wsprintf( tempid, "/to %s", token );
+				// The sender's name: the chat line up to its first ':'. An empty line has no token,
+				// for which wsprintf printed "(null)" before; that is kept.
+				const std::vector<std::string_view> tokens = SplitTokens(cBuff, seps);
+				const std::string name = tokens.empty() ? std::string("(null)") : std::string(tokens[0]);
+				wsprintf( tempid, "/to %s", name.c_str() );
 				bSendCommand(MSGID_COMMAND_CHATMSG, NULL, NULL, NULL, NULL, NULL, tempid);
-				delete pStrTok;
 			}
 			else if( _tmp_sOwnerType < 7 && (strlen(_tmp_cName)>0) && (m_iIlusionOwnerH==NULL) && ((m_bIsCrusadeMode == FALSE) || _iGetFOE(_tmp_sStatus) >= 0))
 			{
@@ -34018,8 +33310,7 @@ char CGame::GetOfficialMapName(char * pMapName, char * pName)
 
 BOOL CGame::bCheckLocalChatCommand(char * pMsg)
 {
- class  CStrTok * pStrTok = NULL;
- char   * token, cBuff[256], cTxt[120], cName[12], cTemp[120];
+ char   cBuff[256], cTxt[120], cName[12], cTemp[120];
  char   seps[] = " \t\n";
 
 	ZeroMemory(cBuff, sizeof(cBuff));
@@ -34071,71 +33362,63 @@ BOOL CGame::bCheckLocalChatCommand(char * pMsg)
 	}
     /////여기까지......
 
-	// v2.11 성후니 변경 
+	// v2.11 성후니 변경
+	// "/tooff <name>" and "/toon <name>": the name is the second token of the line.
 	if (memcmp(cBuff, "/tooff", 6) == 0)
 	{
-		pStrTok = new class CStrTok(cBuff, seps);
-		token = pStrTok->pGet();
-		token = pStrTok->pGet();
-		if (token != NULL)
+		const std::vector<std::string_view> tokens = SplitTokens(cBuff, seps);
+		if (tokens.size() >= 2)
 		{
-			if (strlen(token) <= 10)
+			const std::string token(tokens[1]);
+			if (token.size() <= 10)
 			{
 				// 같은 이름을 가진 캐릭터가 리스트에 없다.
-				strcpy(cName, token);
+				strcpy(cName, token.c_str());
 				if (memcmp(m_cPlayerName, cName, 10) == 0)
 				{
 					AddEventList(BCHECK_LOCAL_CHAT_COMMAND2, 10);//"자기 자신의 메시지를 수신 거부할 수는 없습니다."
-					if (pStrTok != NULL) delete pStrTok;
 					return TRUE;
 				}
 				if( m_pExID != NULL ) delete m_pExID;
-				wsprintf(cTxt, BCHECK_LOCAL_CHAT_COMMAND3, token);//"캐릭터 %s: 메시지 수신 거부 리스트에 등록되었습니다."
+				wsprintf(cTxt, BCHECK_LOCAL_CHAT_COMMAND3, token.c_str());//"캐릭터 %s: 메시지 수신 거부 리스트에 등록되었습니다."
 				AddEventList(cTxt, 10);
-				m_pExID = new class CMsg(NULL, token, NULL);
-				if (pStrTok != NULL) delete pStrTok;
+				m_pExID = new class CMsg(NULL, (char *)token.c_str(), NULL);
 				return TRUE;
    			}
 			else AddEventList(BCHECK_LOCAL_CHAT_COMMAND5, 10);//"메시지 수신을 거부하고자 하는 캐릭터 이름이 너무 깁니다."
 		}
-		if (pStrTok != NULL) delete pStrTok;
 		return TRUE;
 	}
 
 	else if (memcmp(cBuff, "/toon", 5) == 0)
 	{
-		pStrTok = new class CStrTok(cBuff, seps);
-		token = pStrTok->pGet();
-		token = pStrTok->pGet();
-
-		if (token != NULL)
+		const std::vector<std::string_view> tokens = SplitTokens(cBuff, seps);
+		if (tokens.size() >= 2)
 		{
-			if (strlen(token) <= 10)
+			const std::string token(tokens[1]);
+			if (token.size() <= 10)
 			{
-				strcpy(cName, token);
+				strcpy(cName, token.c_str());
 				if (m_pExID != NULL)
 				{
 					ZeroMemory(cTemp, sizeof(cTemp));
 					strcpy(cTemp, m_pExID->m_pMsg);
 					if (memcmp(cTemp, cName, 10) == 0)
 					{
-						// 이미 같은 이름이 리스트에 있다. 
-						wsprintf(cTxt, BCHECK_LOCAL_CHAT_COMMAND1, token);//"캐릭터 %s: 메시지 수신 거부 리스트에서 제거 되었습니다."
+						// 이미 같은 이름이 리스트에 있다.
+						wsprintf(cTxt, BCHECK_LOCAL_CHAT_COMMAND1, token.c_str());//"캐릭터 %s: 메시지 수신 거부 리스트에서 제거 되었습니다."
 						AddEventList(cTxt, 10);
 						delete m_pExID;
 						m_pExID = NULL;
-						if (pStrTok != NULL) delete pStrTok;
 						return TRUE;
 					}
 				}
    			}
 			else AddEventList(BCHECK_LOCAL_CHAT_COMMAND5, 10);//"메시지 수신을 거부하고자 하는 캐릭터 이름이 너무 깁니다."
 		}
-		if (pStrTok != NULL) delete pStrTok;
 		return TRUE;
 	}
 
-	if (pStrTok != NULL) delete pStrTok;
 	return FALSE;
 }
 

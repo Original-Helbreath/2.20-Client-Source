@@ -16,7 +16,7 @@
 #include <memory.h>
 #include <string.h>
 #include "Msg.h"
-#include "strtok.h"
+#include "ClientData.h"
 
 #define DEF_MAXBADWORD		500
 

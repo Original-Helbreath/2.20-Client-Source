@@ -1,0 +1,12 @@
+{
+  "format": "login-config",
+  "version": 1,
+  "encoding": "ascii",
+  "source": {
+    "file": "LOGIN.CFG",
+    "size": 80,
+    "sha256": "8a5a826ca8875b70ebf96fa501196ab21b1cf04b2e52e3b9fdeceddcd1e9504b"
+  },
+  "log_server_address": "211.115.208.39",
+  "log_server_port": 2848
+}
