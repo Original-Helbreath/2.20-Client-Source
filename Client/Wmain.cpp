@@ -27,7 +27,6 @@
 // v2.03 과금 한미르 
 #import "ClientLogon.dll" no_namespace
 #endif
-extern "C" __declspec( dllimport) int __FindHackingDll__(char *);
 
 // --------------------------------------------------------------
 
@@ -149,11 +148,6 @@ LRESULT CALLBACK WndProc(HWND hWnd,UINT message,WPARAM wParam, LPARAM lParam)
 				return 0;
 			}
 			
-			// v2.04 태스크 전환할 검사한다.
-			if (__FindHackingDll__("CRCCHECK") != 1) {
-				G_pGame->ChangeGameMode(DEF_GAMEMODE_ONQUIT);
-				return NULL;
-			}
 		}
 		return DefWindowProc(hWnd, message, wParam, lParam);
 
@@ -237,40 +231,15 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
                LPSTR lpCmdLine, int nCmdShow )
 {
 	// v1.432
-	HINSTANCE hDll;
-	char cSearchDll[] = "rd`qbg-ckk";
-	char cRealName[12];
-
 	// v2.171
 	srand((unsigned)time(NULL));
 	char *pJammer = new char[(rand() % 100) +1];
 	G_pGame = new class CGame; // v2.171
 
-	ZeroMemory(cRealName, sizeof(cRealName));
-	strcpy(cRealName, cSearchDll);
-	for (WORD i = 0; i < strlen(cRealName); i++)
-	if (cRealName[i] != NULL) cRealName[i]++;
-
-	hDll = LoadLibrary(cRealName);
-	if( hDll == NULL ) {
-		MessageBox(NULL, "don't find search.dll", "ERROR!", MB_OK);
-		return 0;
-	}
-
 #ifdef DEF_USING_WIN_IME
 	HINSTANCE hRichDll = LoadLibrary( "Riched20.dll" );
 #endif
-	typedef int (MYPROC)(char *) ;
-	MYPROC *pFindHook; 
-	pFindHook = (MYPROC *) GetProcAddress(hDll, "__FindHackingDll__") ;
 
-	if (pFindHook== NULL) {
-		MessageBox(NULL, "can't find search.dll", "ERROR!", MB_OK);
-		return 0 ;
-	}else if ((*pFindHook)("CRCCHECK") != 1) {
-		return 0 ;
-	}
-	FreeLibrary(hDll);
 
 	sprintf( szAppClass, "Client-I%d", hInstance);
 	if (!InitApplication( hInstance))		return (FALSE);
