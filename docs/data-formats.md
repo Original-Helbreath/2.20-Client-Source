@@ -61,6 +61,26 @@ columns the client never read are kept for completeness):
 
 `m_dwCount` is set to 1 for every item, as before.
 
+#### `contents1000.json` - the server notice (written at run time)
+
+`contents1000` is not shipped data: the client writes it. When the server says its notice changed
+(`NoticementHandler`, `DEF_MSGTYPE_REJECT`), the client saves the notice text it received as
+`contents\contents1000.json` in the `contents` format (`ClientData::WriteNoticeContents`), and dialog 18
+then shows it through the same loader as every other contents file. Its `lines` are what the old path
+gave (the text written to `contents1000.txt` in text mode, read back in text mode, split on `\n` by
+`CStrTok`); `encoding` is the first of `ascii`, `cp949`, `latin-1` in which every line converts
+losslessly; `source` is `{"file": "contents1000.txt", "size": <n>, "origin": "server notice"}`.
+
+`source.size` is the size the old `contents1000.txt` would have had on disk (notice length plus one
+per line feed, which text mode wrote as CR LF). On the first connection the client sends that size
+with `MSGID_REQUEST_NOTICEMENT` (`ClientData::ReadNoticeSourceSize`, 0 when the file is missing or
+invalid), as it used to send the text file's size, so the server's "unchanged / resend" decision is
+the same as before. A `contents1000.json` converted from a shipped `contents1000.txt` carries the
+same `source.size`.
+
+This is the only file the client writes that a JSON loader reads; the other run-time writer,
+`CMisc::_iConvertFileXor`, now only produces `Curse.tmp` for `CCurse::LoadCurse` (text, unchanged).
+
 ### `game-messages` - `contents\GameMsgList.json`
 
 `messages`: array of string, the tokens of `GameMsgList.txt` with separators `;` and `\n`.
@@ -68,7 +88,8 @@ At most 300 (`DEF_MAXGAMEMSGS`) are loaded.
 
 ### `build-items` - `contents\BItemcfg.json`
 
-`items`: array of objects (at most 100, `DEF_MAXBUILDITEMS`; more makes the file invalid):
+`items`: array of objects. At most 100 (`DEF_MAXBUILDITEMS`) are loaded; further items are ignored,
+as with shop items:
 
 | Key | Client field |
 |---|---|
@@ -131,7 +152,9 @@ array's size instead (the output for in-range data is unchanged):
 
 - text dialog lines are capped at 300 (`DEF_TEXTDLGMAXLINES`). The shipped `contents10.txt` has 443
   lines, so the old loader wrote past `m_pMsgTextList`; the client now keeps the first 300;
-- game messages at 300, build items at 100 (more fails), magic/skill ids outside their tables fail;
+- shop items at 140 (`DEF_MAXMENUITEMS`), game messages at 300, build items at 100, bad words at
+  500: the items beyond are ignored. Magic/skill ids outside their tables are not dropped but fail
+  init, because an id is a table index rather than a position in a list;
 - names are copied into their fixed `char` arrays with truncation at the array size (the converter
   refuses names that would not fit, so shipped data is never truncated);
 - command-line tokens are copied with truncation at 119 characters.
@@ -153,6 +176,10 @@ Result: 53 of 55 files identical, field by field and byte by byte (all text dial
 are intended: in `contents0.txt` and `contents907.txt`, prose words beginning with `Item` would have
 been parsed as 2 and 1 garbage shop items **if** the server had ever opened those files as a shop; they
 are text files, so they get no `shop` section. Their `lines` are identical.
+
+The notice writer was checked the same way: 404 notices (fixed samples, cp949 text and random
+byte strings with LF, CR, Ctrl-Z and high bytes) written with `WriteNoticeContents` and read back
+with the loader gave the old path's lines and on-disk size in every case.
 
 The mapping from the parsed structs to the client's objects (`CItem`, `CBuildItem`, `CMagic`, `CSkill`,
 `CMsg`) in `Game.cpp`/`GameMonitor.cpp` was checked by review; `Game.cpp` and `GameMonitor.cpp` pass

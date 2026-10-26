@@ -23474,9 +23474,8 @@ BOOL CGame::_bDecodeBuildItemContents()
 
 	// contents\BItemcfg.json (format "build-items"). Missing or invalid: FALSE, as before.
 	if (ClientData::ReadBuildItems("contents\\BItemcfg.json", items) == false) return FALSE;
-	if (items.size() > DEF_MAXBUILDITEMS) return FALSE;   // the old loader wrote past the array
-
-	for (i = 0; i < (int)items.size(); i++) {
+	// At most DEF_MAXBUILDITEMS items; the rest are ignored (the old loader wrote past the array).
+	for (i = 0; i < (int)items.size() && i < DEF_MAXBUILDITEMS; i++) {
 		const ClientData::BuildItem & it = items[i];
 		char * pElementName[6];
 		m_pBuildItemList[i] = new class CBuildItem;
@@ -23926,8 +23925,7 @@ CCBIS_STEP7:;
 void CGame::NoticementHandler(char * pData)
 {
  char * cp;
- FILE * pFile;
- WORD * wp; 
+ WORD * wp;
 
 	wp = (WORD *)(pData + DEF_INDEX2_MSGTYPE);
 
@@ -23939,10 +23937,9 @@ void CGame::NoticementHandler(char * pData)
 	case DEF_MSGTYPE_REJECT:
 		// 공지사항 변경되었다. 갱신한다.
 		cp = (char *)(pData + DEF_INDEX2_MSGTYPE + 2);
-		pFile = fopen("contents\\contents1000.txt", "wt");
-		if (pFile == NULL) return;
-		fwrite(cp, strlen(cp), 1, pFile);
-		fclose(pFile);
+		// Saved as contents\contents1000.json ("contents" format) so dialog 18 reads it like any
+		// other contents file. A failed write returns, as a failed fopen did.
+		if (ClientData::WriteNoticeContents("contents\\contents1000.json", cp) == false) return;
 		break;
 	}
 
@@ -45361,13 +45358,9 @@ void CGame::InitDataResponseHandler(char * pData)
 		m_bIsFirstConn = FALSE;
 	
 		// 공지사항 파일 사이즈를 읽는다.
-		hFile = CreateFile("contents\\contents1000.txt", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-		if (hFile == INVALID_HANDLE_VALUE) 
-			dwFileSize = 0;
-		else {
-			dwFileSize = GetFileSize(hFile, NULL);
-			CloseHandle(hFile);
-		}
+		// The size the notice had as contents1000.txt, recorded in contents1000.json (0 if none),
+		// so the server's changed/unchanged decision is the same as before.
+		dwFileSize = ClientData::ReadNoticeSourceSize("contents\\contents1000.json");
 
 		bSendCommand(MSGID_REQUEST_NOTICEMENT, NULL, NULL, (int)dwFileSize, NULL, NULL, NULL);
 	}

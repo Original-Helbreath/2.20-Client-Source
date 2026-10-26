@@ -69,6 +69,16 @@ struct LoginCfg {
 };
 bool ReadLoginConfig(const char * pPath, LoginCfg & out);
 
+// The server notice (contents\contents1000.json). WriteNoticeContents stores pText, the notice
+// as the server sent it (a C string in the client's code page), as a "contents" document whose
+// "lines" are exactly what the old path gave: the text written to contents1000.txt in text mode,
+// read back in text mode and split on "\n" by CStrTok. "source.size" records the size the old
+// contents1000.txt would have had on disk; ReadNoticeSourceSize returns it (0 when the file is
+// missing or invalid), because the client reports that size to the server to ask whether the
+// notice changed.
+bool WriteNoticeContents(const char * pPath, const char * pText);
+unsigned long ReadNoticeSourceSize(const char * pPath);
+
 // Copies src into a fixed char array of the given size: zero-filled, at most size-1 bytes.
 void CopyToBuffer(char * pDst, std::size_t size, const std::string & src);
 

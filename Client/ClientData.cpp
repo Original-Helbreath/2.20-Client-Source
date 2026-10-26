@@ -3,6 +3,7 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "ClientData.h"
+#include "StrSplit.h"
 
 #include <windows.h>
 
@@ -238,6 +239,79 @@ bool ReadLoginConfig(const char * pPath, LoginCfg & out)
 		out.hasPort = true;
 	}
 	return true;
+}
+
+namespace {
+
+// Bytes in code page cp -> UTF-8, only when converting back gives the identical bytes.
+bool FromClientString(const std::string & bytes, UINT cp, std::string & u8)
+{
+	u8.clear();
+	if (bytes.empty()) return true;
+	const int wlen = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, bytes.data(), (int)bytes.size(), nullptr, 0);
+	if (wlen <= 0) return false;
+	std::wstring w(wlen, L'\0');
+	MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, bytes.data(), (int)bytes.size(), &w[0], wlen);
+	const int len = WideCharToMultiByte(CP_UTF8, 0, w.data(), wlen, nullptr, 0, nullptr, nullptr);
+	if (len <= 0) return false;
+	u8.resize(len);
+	WideCharToMultiByte(CP_UTF8, 0, w.data(), wlen, &u8[0], len, nullptr, nullptr);
+	std::string back;
+	return ToClientString(json(u8), cp, back) && back == bytes;
+}
+
+} // namespace
+
+bool WriteNoticeContents(const char * pPath, const char * pText)
+{
+	const std::string full(pText);
+
+	// The old path: fwrite to a "wt" file (each LF becomes CR LF) and fread from an "rt" file
+	// (CR LF becomes LF, Ctrl-Z ends the file). The two translations cancel out, so the text
+	// the old reader saw is the notice up to its first Ctrl-Z.
+	std::string text = full.substr(0, full.find('\x1a'));
+	unsigned long ulDiskSize = (unsigned long)full.size();
+	for (char c : full) if (c == '\n') ulDiskSize++;
+
+	const std::vector<std::string_view> tokens = SplitTokens(text, "\n");
+
+	// The first encoding in which every line converts losslessly (latin-1 always does).
+	static const struct { const char * pName; UINT cp; } kEncodings[] = {
+		{ "ascii", 20127 }, { "cp949", 949 }, { "latin-1", 28591 } };
+	for (const auto & enc : kEncodings) {
+		json lines = json::array();
+		bool ok = true;
+		for (std::string_view t : tokens) {
+			std::string u8;
+			if (!FromClientString(std::string(t), enc.cp, u8)) { ok = false; break; }
+			lines.push_back(u8);
+		}
+		if (!ok) continue;
+
+		json doc;
+		doc["format"] = "contents";
+		doc["version"] = kFormatVersion;
+		doc["encoding"] = enc.pName;
+		doc["source"] = { { "file", "contents1000.txt" }, { "size", ulDiskSize }, { "origin", "server notice" } };
+		doc["lines"] = lines;
+
+		std::ofstream out(std::filesystem::u8path(pPath), std::ios::binary | std::ios::trunc);
+		if (!out) return false;
+		out << doc.dump(2) << "\n";
+		return (bool)out;
+	}
+	return false;
+}
+
+unsigned long ReadNoticeSourceSize(const char * pPath)
+{
+	Doc doc;
+	if (!Load(pPath, "contents", doc)) return 0;
+	const auto src = doc.j.find("source");
+	if (src == doc.j.end() || !src->is_object()) return 0;
+	const auto size = src->find("size");
+	if (size == src->end() || !size->is_number_unsigned()) return 0;
+	return size->get<unsigned long>();
 }
 
 void CopyToBuffer(char * pDst, std::size_t size, const std::string & src)
