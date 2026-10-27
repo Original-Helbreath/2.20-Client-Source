@@ -69,6 +69,13 @@ struct LoginCfg {
 };
 bool ReadLoginConfig(const char * pPath, LoginCfg & out);
 
+// format "client-config" (client.json; // and /* */ comments allowed). Client settings that are not
+// part of the 2.20 data. A missing or invalid file leaves the defaults, which are windowed.
+struct ClientCfg {
+	bool windowed = true;   // false: exclusive full-screen 640x480 16-bit, as the 2.20 Release build
+};
+bool ReadClientConfig(const char * pPath, ClientCfg & out);
+
 // The server notice (contents\contents1000.json). WriteNoticeContents stores pText, the notice
 // as the server sent it (a C string in the client's code page), as a "contents" document whose
 // "lines" are exactly what the old path gave: the text written to contents1000.txt in text mode,

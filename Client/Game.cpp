@@ -462,11 +462,9 @@ CGame::CGame()
 	srand( (unsigned)time( NULL ) );
 	ReadSettings();
 
-#ifdef _DEBUG
-	m_bToggleScreen = TRUE;
-#else
+	// RENDER-016: the mode is client.json's "windowed"; Enter no longer switches it in Debug builds
+	// (the chat command /enabletogglescreen still turns the toggle on).
 	m_bToggleScreen = FALSE;
-#endif
 	m_bShowFPS = FALSE;
 	m_cDetailLevel = 2;
 	m_cLoading = 0;
@@ -911,7 +909,7 @@ BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 		return FALSE;
 	}
 
-	if (m_DInput.bInit(hWnd, hInst) == FALSE) {
+	if (m_DInput.bInit(hWnd, hInst, m_DDraw.m_bFullMode == FALSE) == FALSE) {	// RENDER-016
 		MessageBox(m_hWnd, "This program requires DirectX7.0a!","ERROR",MB_ICONEXCLAMATION | MB_OK);
 		return FALSE;
 	}

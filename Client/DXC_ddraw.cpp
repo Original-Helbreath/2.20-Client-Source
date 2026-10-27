@@ -31,11 +31,61 @@ DXC_ddraw::DXC_ddraw()
 	m_lpPDBGS		= NULL;
 	m_lpBackB4flip	= NULL;
 	m_cPixelFormat	= 0;
-#ifdef _DEBUG
+	m_pBackB4Addr	= NULL;	// RENDER-016: WM_PAINT may present before bInit
+	m_sBackB4Pitch	= 0;
+	// RENDER-016: the mode comes from client.json ("windowed"), set by WinMain before the window is made.
 	m_bFullMode		= FALSE;
-#else
-	m_bFullMode		= TRUE;
-#endif
+}
+
+// RENDER-016: window styles for the two modes, and the windowed placement (640x480 client area, centred).
+DWORD DXC_ddraw::dwWindowStyle(BOOL bFullMode)
+{
+	if (bFullMode == TRUE) return WS_POPUP;
+	return WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+}
+
+void DXC_ddraw::_PlaceWindowed(HWND hWnd)
+{
+	RECT rcWindow = { 0, 0, 640, 480 };
+	AdjustWindowRect(&rcWindow, dwWindowStyle(FALSE), FALSE);
+	const int iWidth  = rcWindow.right - rcWindow.left;
+	const int iHeight = rcWindow.bottom - rcWindow.top;
+
+	RECT rcWork;
+	if (SystemParametersInfo(SPI_GETWORKAREA, 0, &rcWork, 0) == FALSE) SetRect(&rcWork, 0, 0, 640, 480);
+	const int iX = rcWork.left + ((rcWork.right - rcWork.left) - iWidth) / 2;
+	const int iY = rcWork.top + ((rcWork.bottom - rcWork.top) - iHeight) / 2;
+
+	SetWindowLongPtr(hWnd, GWL_STYLE, dwWindowStyle(FALSE));
+	SetWindowPos(hWnd, HWND_NOTOPMOST, iX > 0 ? iX : 0, iY > 0 ? iY : 0, iWidth, iHeight, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+}
+
+// RENDER-016: windowed present. The back buffer is 16-bit 565 whatever the desktop is, so GDI converts
+// it to the desktop format while copying to the window's client area (GDI also clips to the window).
+HRESULT DXC_ddraw::_PresentWindowed()
+{
+	struct {
+		BITMAPINFOHEADER bmiHeader;
+		DWORD dwMasks[3];
+	} bmi = {};
+
+	if (m_pBackB4Addr == NULL || m_sBackB4Pitch <= 0) return DD_OK;
+	bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+	bmi.bmiHeader.biWidth       = m_sBackB4Pitch;	// pitch in pixels
+	bmi.bmiHeader.biHeight      = -480;				// top-down
+	bmi.bmiHeader.biPlanes      = 1;
+	bmi.bmiHeader.biBitCount    = 16;
+	bmi.bmiHeader.biCompression = BI_BITFIELDS;
+	bmi.dwMasks[0] = 0xF800;
+	bmi.dwMasks[1] = 0x07E0;
+	bmi.dwMasks[2] = 0x001F;
+
+	HDC hDC = GetDC(G_hWnd);
+	if (hDC == NULL) return DD_OK;
+	StretchDIBits(hDC, 0, 0, 640, 480, 0, 0, 640, 480, m_pBackB4Addr,
+		reinterpret_cast<BITMAPINFO *>(&bmi), DIB_RGB_COLORS, SRCCOPY);
+	ReleaseDC(G_hWnd, hDC);
+	return DD_OK;
 }
 
 DXC_ddraw::~DXC_ddraw()
@@ -90,16 +140,10 @@ BOOL DXC_ddraw::bInit(HWND hWnd)
 	else
 	{
 		// 윈도우 모드이다.
-		int cx = GetSystemMetrics(SM_CXFULLSCREEN);
-		int cy = GetSystemMetrics(SM_CYFULLSCREEN);
-
 		ddVal = m_lpDD4->SetCooperativeLevel(hWnd, DDSCL_NORMAL);
 		if (ddVal != DD_OK) return FALSE;
-		
-		cx = cx/2;
-		cy = cy/2;
-		if(cy>280) cy -= 40;
-		SetWindowPos( hWnd, HWND_TOP, cx-320, cy-240, 640, 480, SWP_SHOWWINDOW);
+
+		_PlaceWindowed(hWnd);	// RENDER-016
 
 		// 프론트 버퍼 생성 
 		memset( (VOID *)&ddsd, 0, sizeof(ddsd) );
@@ -111,7 +155,7 @@ BOOL DXC_ddraw::bInit(HWND hWnd)
 		ddVal = m_lpDD4->CreateSurface(&ddsd, &m_lpFrontB4, NULL);
 		if (ddVal != DD_OK) return FALSE;
 
-		SetRect(&m_rcFlipping, cx-320, cy-240, cx+320, cy+240); // our fictitious sprite bitmap is 
+		SetRect(&m_rcFlipping, 0, 0, 640, 480);	// RENDER-016: windowed frames are copied by _PresentWindowed
 	}
 
 	InitFlipToGDI(hWnd);
@@ -220,8 +264,8 @@ HRESULT DXC_ddraw::iFlip()
 	}
 	else
 	{
-		//SetRect( &m_rcFlipping, 0, 0, 1152, 864 );
-		ddVal = m_lpFrontB4->Blt(&m_rcFlipping, m_lpBackB4, NULL, DDBLT_WAIT, NULL);
+		// RENDER-016: a 16-bit back buffer cannot be Blt to a 32-bit primary; GDI converts it instead.
+		ddVal = _PresentWindowed();
 	}
 
 	if (ddVal == DDERR_SURFACELOST) {
@@ -260,16 +304,10 @@ void DXC_ddraw::ChangeDisplayMode(HWND hWnd)
 
 	if( m_bFullMode == TRUE )
 	{
-		int cx = GetSystemMetrics(SM_CXFULLSCREEN);
-		int cy = GetSystemMetrics(SM_CYFULLSCREEN);
-
 		ddVal = m_lpDD4->SetCooperativeLevel(hWnd, DDSCL_NORMAL);
 		if (ddVal != DD_OK) return;
 
-		cx = cx/2;
-		cy = cy/2;
-		if(cy>280) cy -= 40;
-		SetWindowPos( hWnd, NULL, cx-320, cy-240, 640, 480, SWP_SHOWWINDOW);
+		_PlaceWindowed(hWnd);	// RENDER-016
 
 		// 프론트 버퍼 생성 
 		memset( (VOID *)&ddsd, 0, sizeof(ddsd) );
@@ -281,13 +319,15 @@ void DXC_ddraw::ChangeDisplayMode(HWND hWnd)
 		ddVal = m_lpDD4->CreateSurface(&ddsd, &m_lpFrontB4, NULL);
 		if (ddVal != DD_OK) return;
 
-		SetRect(&m_rcFlipping, cx-320, cy-240, cx+320, cy+240); // our fictitious sprite bitmap is 
+		SetRect(&m_rcFlipping, 0, 0, 640, 480);	// RENDER-016: windowed frames are copied by _PresentWindowed
 		m_bFullMode = FALSE;
 	}
 	else
 	{
 		DDSCAPS2       ddscaps;
 		// 전체화면 모드이다.
+		SetWindowLongPtr(hWnd, GWL_STYLE, dwWindowStyle(TRUE));	// RENDER-016: back to the borderless popup
+		SetWindowPos(hWnd, HWND_TOP, 0, 0, 640, 480, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
 		ddVal = m_lpDD4->SetCooperativeLevel(hWnd, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
 		if (ddVal != DD_OK) return;
 
@@ -335,8 +375,16 @@ IDirectDrawSurface7 * DXC_ddraw::pCreateOffScreenSurface(WORD wSzX, WORD wSzY)
     ZeroMemory(&ddsd, sizeof(ddsd));
 	if ((wSzX % 4) != 0) wSzX += 4 - (wSzX % 4);
     ddsd.dwSize  = sizeof(ddsd);
-    ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT |DDSD_WIDTH;
+    ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT |DDSD_WIDTH | DDSD_PIXELFORMAT;
 	ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_SYSTEMMEMORY;
+	// RENDER-016: always 16-bit RGB 565, which the sprite and blend code is written for, whatever the
+	// desktop format is (a windowed 32-bit desktop would otherwise give 32-bit surfaces).
+	ddsd.ddpfPixelFormat.dwSize        = sizeof(DDPIXELFORMAT);
+	ddsd.ddpfPixelFormat.dwFlags       = DDPF_RGB;
+	ddsd.ddpfPixelFormat.dwRGBBitCount = 16;
+	ddsd.ddpfPixelFormat.dwRBitMask    = 0xF800;
+	ddsd.ddpfPixelFormat.dwGBitMask    = 0x07E0;
+	ddsd.ddpfPixelFormat.dwBBitMask    = 0x001F;
 	ddsd.dwWidth  = (DWORD)wSzX;
     ddsd.dwHeight = (DWORD)wSzY;
     if (m_lpDD4->CreateSurface(&ddsd, &pdds4, NULL) != DD_OK) return NULL;

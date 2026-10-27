@@ -1,0 +1,11 @@
+// Client settings (RENDER-016). Comments are allowed in this file.
+{
+  "format": "client-config",
+  "version": 1,
+  "encoding": "ascii",
+
+  // true: a normal 640x480 window on the desktop.
+  // false: exclusive full-screen 640x480 16-bit, as the 2.20 Release build ran.
+  // A missing file means windowed.
+  "windowed": true
+}
