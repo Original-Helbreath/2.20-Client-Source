@@ -30,6 +30,7 @@
 	#include "stdafx.h"
 #endif
 #include "XSocket.h"
+#include "LoginLink.h"
 #include "Sprite.h"
 #include "SpriteID.h"
 #include "Misc.h"
@@ -505,6 +506,12 @@ public:
 	void LogRecvMsgHandler(char * pData);
 	void LogResponseHandler(char * pData);
 	void OnLogSocketEvent(WPARAM wParam, LPARAM lParam);
+	void LoginLinkInit();
+	BOOL bBeginLoginRequest();
+	BOOL bBeginCreateAccountRequest();
+	void OnLoginLinkLogin(const hb::net::login::login_response & stReply, const std::vector<hb::net::character_summary> & characters);
+	void OnLoginLinkAccount(hb::net::login::account_result eResult);
+	void OnLoginLinkFailed(std::string_view sWhy);
 	void OnTimer();
 	void LogEventHandler(char * pData);
 	void _ReadMapData(short sPivotX, short sPivotY, char * pData);
@@ -644,6 +651,7 @@ public:
 	class CMapData * m_pMapData;
 	class XSocket * m_pGSock;
 	class XSocket * m_pLSock;
+	class LoginLink * m_pLoginLink;	// CLIENT-018: the Login server connection (shared hb::net::client), polled from UpdateScreen
 	class CMsg    * m_pChatMsgList[DEF_MAXCHATMSGS];	// 캐릭터 머리말용 채팅 리스트 
 	class CMsg    * m_pChatScrollList[DEF_MAXCHATSCROLLMSGS]; // 채팅 스크롤용 리스트 
 	class CMsg    * m_pWhisperMsg[DEF_MAXWHISPERMSG];
