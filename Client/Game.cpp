@@ -3477,42 +3477,32 @@ void CGame::UpdateScreen_OnLoading(bool bActive)
 				CloseHandle(m_hPakFile);
 			}
 
-			m_hPakFile = CreateFile("sprites\\LoginDialog.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL); 
+			// CLIENT-022: the interface comes from New-Dialog.pak (sheet map in the ticket); LoginDialog.pak and DialogText.pak do not exist.
+			m_hPakFile = CreateFile("sprites\\New-Dialog.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
-				m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN] = new class CSprite(m_hPakFile, &m_DDraw, "LoginDialog", 0, FALSE); 
+				m_pSprite[DEF_SPRID_INTERFACE_ND_QUIT] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 0, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 1, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 2, FALSE);
 #ifdef DEF_MAKE_ACCOUNT // v2.172
-				m_pSprite[DEF_SPRID_INTERFACE_ND_NEWACCOUNT] = new class CSprite(m_hPakFile, &m_DDraw, "LoginDialog", 1, FALSE);
-				m_pSprite[DEF_SPRID_INTERFACE_ND_AGREEMENT] = new class CSprite(m_hPakFile, &m_DDraw, "LoginDialog", 2, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_NEWACCOUNT] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 3, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_AGREEMENT] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 5, FALSE);
 #endif
-				CloseHandle(m_hPakFile);
-			}
-			m_hPakFile = CreateFile("sprites\\New-Dialog.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL); 
-			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
-				m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 1, FALSE); 
-				m_pSprite[DEF_SPRID_INTERFACE_ND_QUIT] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 2, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_SELECTCHAR] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 6, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_NEWCHAR] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 7, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_NEWEXCHANGE] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 11, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_CRUSADE] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 12, FALSE);
+				m_pSprite[DEF_SPRID_INTERFACE_ND_ICONPANNEL] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 13, FALSE);
 				CloseHandle(m_hPakFile);
 			}
 
-			m_hPakFile = CreateFile("sprites\\GameDialog.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL); 
+			// GAME1-4 and INVENTORY stay on GameDialog.pak: the New-Dialog sheets for them have a different frame layout (CLIENT-022 report).
+			m_hPakFile = CreateFile("sprites\\GameDialog.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
 				m_pSprite[DEF_SPRID_INTERFACE_ND_GAME1] =      new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 0, FALSE);
 				m_pSprite[DEF_SPRID_INTERFACE_ND_GAME2] =      new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 1, FALSE);
 				m_pSprite[DEF_SPRID_INTERFACE_ND_GAME3] =      new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 2, FALSE);
 				m_pSprite[DEF_SPRID_INTERFACE_ND_GAME4] =      new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 3, FALSE);
-				m_pSprite[DEF_SPRID_INTERFACE_ND_CRUSADE] =    new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 4, FALSE);
-				//m_pSprite[DEF_SPRID_INTERFACE_GUIDEMAP] =      new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 5, FALSE);
-				m_pSprite[DEF_SPRID_INTERFACE_ND_ICONPANNEL] = new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 6, FALSE);
 				m_pSprite[DEF_SPRID_INTERFACE_ND_INVENTORY] =  new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 7, FALSE);
-				m_pSprite[DEF_SPRID_INTERFACE_ND_SELECTCHAR] = new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 8, FALSE);
-				m_pSprite[DEF_SPRID_INTERFACE_ND_NEWCHAR] =    new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 9, FALSE);
-				m_pSprite[DEF_SPRID_INTERFACE_ND_NEWEXCHANGE] = new class CSprite(m_hPakFile, &m_DDraw, "GameDialog", 10, FALSE);
-				CloseHandle(m_hPakFile);
-			}
-
-			m_hPakFile = CreateFile("sprites\\DialogText.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL); 
-			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
-				m_pSprite[DEF_SPRID_INTERFACE_ND_TEXT] = new class CSprite(m_hPakFile, &m_DDraw, "DialogText", 0, FALSE);
-				m_pSprite[DEF_SPRID_INTERFACE_ND_BUTTON] = new class CSprite(m_hPakFile, &m_DDraw, "DialogText", 1, FALSE);
 				CloseHandle(m_hPakFile);
 			}
 
