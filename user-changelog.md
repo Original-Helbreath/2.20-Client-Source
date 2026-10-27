@@ -1,9 +1,6 @@
-## Run the client in a window
-
-**Added**
-- The game client can run in a normal window, set in `client.json`.
+## Start without Curse.txt
 
 **Fixed**
-- The 64-bit client draws the screen instead of showing black.
+- The client no longer stops at start-up with a "CURSE.TXT" error.
 
-Summary: The client now runs in a window with correct colours, ready for connection testing (2026-10-27)
+Summary: The client starts straight to the main menu (2026-10-27)

@@ -1004,15 +1004,7 @@ BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 		return FALSE;
 	}
 
-#if DEF_LANGUAGE > 2
-	if(!m_Misc._iConvertFileXor("contents\\Curse.txt", "contents\\Curse.tmp", 35))
-	{
-		MessageBox(m_hWnd, "CURSE.TXT file contains wrong infomation.","ERROR",MB_ICONEXCLAMATION | MB_OK);
-		return FALSE;
-	}
-	m_curse.LoadCurse( "contents\\Curse.tmp" );
-	DeleteFile("contents\\Curse.tmp");
-#endif
+	// The curse list is optional: m_curse is never loaded, so it stays empty and filters nothing.
 	//==============================================mando..
 
 	_LoadGameMsgTextContents();
