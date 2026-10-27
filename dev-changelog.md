@@ -1,17 +1,16 @@
-## Log in through the shared network layer
+## Character select through LoginLink
 
 ### Client
 
 **Added**
-- `LoginLink`, the client's Login server connection on the shared `hb::net::client`, driven by `poll()` from the game loop; password copies are wiped after sending.
-- The Log In screen sends the shared `login_request` and shows each `login_result`; the New Account screen (re-enabled for the English build) sends `create_account_request` with account, password and email and shows each `account_result`.
-- Texts for account locked, service not available, account creation disabled and invalid account name.
-- The shared `hb::log` (`Client.log`) and the shared net, protocol and log sources.
+- `LoginLink` reads the `character_list` that follows login ok and fills the character-select screen from it.
+- Create Character and Delete send the shared `create_character_request` and `delete_character_request` over the login session, then refresh the list from the reply.
+- Message texts for invalid character name, invalid stats, no free slot, level too high, character not found and delete failed.
 
 **Changed**
-- `login.json` now sets the Login server address in English builds too; a missing file keeps the built-in default, and a malformed file or an out-of-range port stops start-up with the config error.
+- The Login connection stays open after login ok for the character requests.
 
 **Removed**
-- The legacy `XSocket` login and create-account send paths.
+- The legacy `XSocket` create-character and delete-character send paths and their reply handlers.
 
-Summary: Client creates accounts and logs in against the new Login server over the shared network layer (2026-10-27)
+Summary: Client lists, creates and deletes characters through the Login server (2026-10-27)
