@@ -57,8 +57,12 @@ struct LoginLink::impl
 	{
 		idle,
 		login,           // sent login_request, waiting for login_response
-		character_list,  // LOGIN-007: unused until the server sends a character_list after login ok
+		login_list,      // login ok, waiting for the character_list that follows it
 		account,         // sent create_account_request, waiting for create_account_response
+		create,          // sent create_character_request, waiting for create_character_response
+		create_list,     // create ok, waiting for the fresh character_list
+		remove,          // sent delete_character_request, waiting for delete_character_response
+		remove_list,     // delete ok, waiting for the fresh character_list
 	};
 
 	impl(std::string host_name, std::uint16_t port_number, handlers callbacks)
@@ -78,6 +82,10 @@ struct LoginLink::impl
 	std::vector<std::byte> pending;
 	phase state = phase::idle;
 	login::login_response held{};
+	// The ok result of a create or delete, held until its character_list arrives.
+	login::character_result held_result = login::character_result::ok;
+	// True from a login ok (and its list) until the connection drops: character requests need it.
+	bool session = false;
 	// Bumped whenever the connection is dropped or replaced; every queued callback carries the value it was
 	// made under and does nothing if it is stale.
 	std::uint32_t generation = 0;
@@ -88,6 +96,7 @@ struct LoginLink::impl
 	{
 		++generation;
 		state = phase::idle;
+		session = false;
 		scrub(pending);
 		pending.clear();
 		if (link)
@@ -147,6 +156,17 @@ struct LoginLink::impl
 			});
 	}
 
+	// Sends a character request on the open session. One request at a time: the Login server closes the
+	// connection on a second one.
+	bool send_on_session(const std::vector<std::byte>& bytes, phase next)
+	{
+		if (!session || !conn || state != phase::idle)
+			return false;
+		conn->send_encoded(bytes);
+		state = next;
+		return true;
+	}
+
 	// No reply will come. The connection is dropped before the handler runs, so the handler may start a
 	// new request.
 	void fail(const std::string& text)
@@ -163,10 +183,17 @@ struct LoginLink::impl
 		if (state == phase::idle)
 		{
 			hb::log::info("login link: closed ({})", to_string(reason));
+			session = false;
 			conn.reset();
 			return;
 		}
 		fail(std::format("connection closed before the reply: {} {}", to_string(reason), detail));
+	}
+
+	static bool read_list(const frame& received, std::vector<character_summary>& characters)
+	{
+		login::character_list head{};
+		return decode_character_list(received, head, characters);
 	}
 
 	void on_frame(const frame& received)
@@ -187,24 +214,68 @@ struct LoginLink::impl
 					handler(reply, {});
 				return;
 			}
-			// LOGIN-006: no character_list follows the ok yet (LOGIN-007). Deliver now with an empty list and
-			// keep the connection open for the session; a list that arrives later is logged, not shown.
-			state = phase::idle;
-			hb::log::info("login link: login ok");
-			if (cb.on_login)
-				cb.on_login(reply, {});
+			// Login ok: the character_list follows at once. The connection stays open for the session.
+			held = reply;
+			state = phase::login_list;
 			return;
 		}
-		case phase::character_list:
+		case phase::login_list:
 		{
-			login::character_list head{};
 			std::vector<character_summary> characters;
-			if (!decode_character_list(received, head, characters))
+			if (!read_list(received, characters))
 				return fail("unexpected frame while waiting for character_list");
 			state = phase::idle;
+			session = true;
 			hb::log::info("login link: login ok, {} character(s)", characters.size());
 			if (cb.on_login)
 				cb.on_login(held, characters);
+			return;
+		}
+		case phase::create:
+		case phase::remove:
+		{
+			const bool creating = (state == phase::create);
+			login::character_result result{};
+			if (creating)
+			{
+				login::create_character_response reply{};
+				if (!decode(received, reply))
+					return fail("unexpected frame while waiting for create_character_response");
+				result = reply.result;
+			}
+			else
+			{
+				login::delete_character_response reply{};
+				if (!decode(received, reply))
+					return fail("unexpected frame while waiting for delete_character_response");
+				result = reply.result;
+			}
+			hb::log::info("login link: {} character reply ({})", creating ? "create" : "delete", static_cast<int>(result));
+			if (result == login::character_result::ok)
+			{
+				// Only an ok is followed by the fresh list; deliver both together.
+				held_result = result;
+				state = creating ? phase::create_list : phase::remove_list;
+				return;
+			}
+			state = phase::idle;
+			const auto& handler = creating ? cb.on_create : cb.on_delete;
+			if (handler)
+				handler(result, {});
+			return;
+		}
+		case phase::create_list:
+		case phase::remove_list:
+		{
+			const bool creating = (state == phase::create_list);
+			std::vector<character_summary> characters;
+			if (!read_list(received, characters))
+				return fail("unexpected frame while waiting for character_list");
+			state = phase::idle;
+			hb::log::info("login link: {} character(s) after {}", characters.size(), creating ? "create" : "delete");
+			const auto handler = creating ? cb.on_create : cb.on_delete;
+			if (handler)
+				handler(held_result, characters);
 			return;
 		}
 		case phase::account:
@@ -268,6 +339,39 @@ bool LoginLink::request_create_account(std::string_view account, std::string_vie
 	return true;
 }
 
+bool LoginLink::request_create_character(const new_character& fields)
+{
+	login::create_character_request request{};
+	std::vector<std::byte> bytes;
+	if (!request.name.assign(fields.name))
+		return false;
+	request.sex = fields.sex;
+	request.skin = fields.skin;
+	request.hair_style = fields.hair_style;
+	request.hair_colour = fields.hair_colour;
+	request.underwear_colour = fields.underwear_colour;
+	request.stats = fields.stats;
+	if (!encode(request, impl::max_body_bytes, bytes))
+		return false;
+	return m_impl->send_on_session(bytes, impl::phase::create);
+}
+
+bool LoginLink::request_delete_character(std::string_view name)
+{
+	login::delete_character_request request{};
+	std::vector<std::byte> bytes;
+	if (!request.name.assign(name))
+		return false;
+	if (!encode(request, impl::max_body_bytes, bytes))
+		return false;
+	return m_impl->send_on_session(bytes, impl::phase::remove);
+}
+
+bool LoginLink::has_session() const
+{
+	return m_impl->session;
+}
+
 void LoginLink::cancel()
 {
 	scrub(m_impl->pending);
@@ -328,4 +432,54 @@ const char* AccountResultCode(login::account_result result)
 		return "0N";  // Account creation is disabled
 	}
 	return "05";
+}
+
+const char* CreateCharacterResultCode(login::character_result result)
+{
+	using r = login::character_result;
+	switch (result)
+	{
+	case r::ok:
+		return "47";  // New character created.
+	case r::name_taken:
+		return "29";  // Already existing character name.
+	case r::invalid_name:
+		return "2P";  // The character name is not valid.
+	case r::invalid_stats:
+		return "2Q";  // The starting stats are not valid.
+	case r::slots_full:
+		return "2R";  // No free character slot.
+	case r::level_too_high:
+		return "2S";  // The level is too high.
+	case r::world_unavailable:
+		return "2Y";  // the world server is not running
+	case r::failed:
+	case r::no_such_character:
+		break;
+	}
+	return "28";  // Can not create new character!
+}
+
+const char* DeleteCharacterResultCode(login::character_result result)
+{
+	using r = login::character_result;
+	switch (result)
+	{
+	case r::ok:
+		return "3A";  // Character deleted.
+	case r::invalid_name:
+		return "3P";  // The character name is not valid.
+	case r::no_such_character:
+		return "3T";  // The character does not exist.
+	case r::level_too_high:
+		return "3S";  // The level is too high to delete.
+	case r::world_unavailable:
+		return "3Y";  // the world server is not running
+	case r::failed:
+	case r::name_taken:
+	case r::invalid_stats:
+	case r::slots_full:
+		break;
+	}
+	return "3V";  // Can not delete character!
 }

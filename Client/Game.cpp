@@ -1647,64 +1647,6 @@ BOOL CGame::bSendCommand(DWORD dwMsgID, WORD wCommand, char cDir, int iV1, int i
 #endif
 		break;
 	
-	case MSGID_REQUEST_CREATENEWCHARACTER:
-		// to Log Server
-		dwp = (DWORD *)(cMsg + DEF_INDEX4_MSGID);
-		*dwp = dwMsgID;
-		wp  = (WORD *)(cMsg + DEF_INDEX2_MSGTYPE);
-		*wp = (WORD)NULL;
-
-		cp = (char *)(cMsg + DEF_INDEX2_MSGTYPE + 2);
-
-		memcpy(cp, m_cPlayerName, 10);
-		cp += 10;
-
-		memcpy(cp, m_cAccountName, 10);
-		cp += 10;
-
-		memcpy(cp, m_cAccountPassword, 10);
-		cp += 10;
-
-		memcpy(cp, m_cWorldServerName, 30);
-		cp += 30;
-
-		// 새로 생성할 캐릭터의 초기정보를 담는다.
-		*cp = m_cGender;
-		cp++;
-
-		*cp = m_cSkinCol;
-		cp++;
-
-		*cp = m_cHairStyle;
-		cp++;
-
-		*cp = m_cHairCol;
-		cp++;
-
-		*cp = m_cUnderCol;
-		cp++;
-
-		*cp = m_ccStr;
-		cp++;
-
-		*cp = m_ccVit;
-		cp++;
-
-		*cp = m_ccDex; 
-		cp++;
-
-		*cp = m_ccInt;
-		cp++;
-
-		*cp = m_ccMag;
-		cp++;
-
-		*cp = m_ccChr;
-		cp++;
-
-		iRet = m_pLSock->iSendMsg(cMsg, 77, cKey);
-		break;
-
 	case MSGID_REQUEST_ENTERGAME:
 		// to Log Server
 		dwp = (DWORD *)(cMsg + DEF_INDEX4_MSGID);
@@ -1745,32 +1687,6 @@ BOOL CGame::bSendCommand(DWORD dwMsgID, WORD wCommand, char cDir, int iV1, int i
 		cp += 120;
 		
 		iRet = m_pLSock->iSendMsg(cMsg, 200, cKey);
-		break;
-
-	case MSGID_REQUEST_DELETECHARACTER:
-		// to Log Server
-		dwp = (DWORD *)(cMsg + DEF_INDEX4_MSGID);
-		*dwp = dwMsgID;
-		wp  = (WORD *)(cMsg + DEF_INDEX2_MSGTYPE);
-		*wp = (WORD)m_wEnterGameType; // 몇번째 캐릭터를 지울것인가의 정보 
-
-		cp = (char *)(cMsg + DEF_INDEX2_MSGTYPE + 2);
-
-		// 지울 캐릭터 이름 
-		memcpy(cp, m_pCharList[m_wEnterGameType - 1]->m_cName, 10);
-		cp += 10;
-
-		memcpy(cp, m_cAccountName, 10);
-		cp += 10;
-
-		memcpy(cp, m_cAccountPassword, 10);
-		cp += 10;
-
-		// 지울 캐릭터가 위치한 월드서버 이름 
-		memcpy(cp, m_cWorldServerName, 30);
-		cp += 30;
-		
-		iRet = m_pLSock->iSendMsg(cMsg, 66, cKey);
 		break;
 
 	case MSGID_REQUEST_SETITEMPOS:
@@ -2993,16 +2909,10 @@ void CGame::ConnectionEstablishHandler(char cWhere)
 			switch (m_dwConnectMode) {
 			// MSGID_REQUEST_LOGIN and MSGID_REQUEST_CREATENEWACCOUNT: removed (CLIENT-018), see LoginLink.
 
-			case MSGID_REQUEST_CREATENEWCHARACTER:
-				bSendCommand(MSGID_REQUEST_CREATENEWCHARACTER, NULL, NULL, NULL, NULL, NULL, NULL);
-				break;
+			// MSGID_REQUEST_CREATENEWCHARACTER and MSGID_REQUEST_DELETECHARACTER: removed (CLIENT-019), see LoginLink.
 
 			case MSGID_REQUEST_ENTERGAME:
 				bSendCommand(MSGID_REQUEST_ENTERGAME, NULL, NULL, NULL, NULL, NULL, NULL);
-				break;
-
-			case MSGID_REQUEST_DELETECHARACTER:
-				bSendCommand(MSGID_REQUEST_DELETECHARACTER, NULL, NULL, NULL, NULL, NULL, NULL);
 				break;
 
 			case MSGID_REQUEST_CHANGEPASSWORD:
@@ -14362,124 +14272,6 @@ void CGame::LogResponseHandler(char * pData)
 #endif
 
 	switch (wResponse) {
-	case DEF_LOGRESMSGTYPE_CHARACTERDELETED:
-		// 캐릭터가 지워진 후 남은 캐릭터들 정보 
-		cp = (pData + DEF_INDEX2_MSGTYPE + 2);
-		
-		//m_iAccountStatus = (int)*cp; // v1.43 로그인때 받은 정보를 그대로 유지한다.
-		cp++;
-
-		m_iTotalChar = (int)*cp;
-		cp++;
-		
-		for (i = 0; i < 4; i++)
-		if (m_pCharList[i] != NULL) {
-			delete m_pCharList[i];
-			m_pCharList[i] = NULL;
-		}
-
-		for (i = 0; i < m_iTotalChar; i++) {
-			m_pCharList[i] = new class CCharInfo;
-			memcpy(m_pCharList[i]->m_cName, cp, 10);
-			cp += 10;
-			if (*cp == 0) {
-				// 캐릭터의 데이터화일이 손상되었다.
-				m_pCharList[i]->m_sSex = NULL; // Sex가 NULL이면 그리지 않아야 한다.
-				cp += 40;
-			}
-			else {
-				cp++;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr1 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr2 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr3 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr4 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sSex = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sSkinCol = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sLevel = *wp;
-				cp += 2;
-
-				dwp = (DWORD *)cp;
-				m_pCharList[i]->m_iExp = *dwp; 
-				cp += 4;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sStr = *wp;
-				cp += 2; 
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sVit = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sDex = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sInt = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sMag = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sChr = *wp;
-				cp += 2;
-
-				ip = (int *)cp; // v1.4
-				m_pCharList[i]->m_iApprColor = *ip;
-				cp += 4;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iYear = (int)*wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iMonth = (int)*wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iDay = (int)*wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iHour = (int)*wp; 
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iMinute = (int)*wp;
-				cp += 2;
-
-				ZeroMemory(m_pCharList[i]->m_cMapName, sizeof(m_pCharList[i]->m_cMapName));
-				memcpy(m_pCharList[i]->m_cMapName, cp, 10);
-				cp += 10;
-			}
-		}
-		ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
-		ZeroMemory(m_cMsg, sizeof(m_cMsg));
-		strcpy(m_cMsg, "3A");
-		break;
-	
 	case DEF_LOGRESMSGTYPE_CONFIRM: 
 
 		// 계정의 소유자가 갖고 있는 캐릭터 정보를 읽는다.
@@ -14745,135 +14537,6 @@ void CGame::LogResponseHandler(char * pData)
 		strcpy(m_cMsg, "Not existing character!");
 		break;
 
-	case DEF_LOGRESMSGTYPE_NEWCHARACTERCREATED:
-		// 새 캐릭터가 만들어 졌다. 
-		// 계정의 소유자가 갖고 있는 캐릭터 정보를 읽는다.
-		ZeroMemory(cCharName, sizeof(cCharName));
-		memcpy(cCharName, cp, 10);
-		cp += 10;
-		
-		m_iTotalChar = (int)*cp;
-		cp++;
-		
-		for (i = 0; i < 4; i++)
-		if (m_pCharList[i] != NULL) delete m_pCharList[i];
-		//
-		for (i = 0; i < m_iTotalChar; i++) {
-			m_pCharList[i] = new class CCharInfo;
-			memcpy(m_pCharList[i]->m_cName, cp, 10);
-			cp += 10;
-			if (*cp == 0) {
-				// 캐릭터의 데이터화일이 손상되었다.
-				m_pCharList[i]->m_sSex = NULL; // Sex가 NULL이면 그리지 않아야 한다.
-				cp += 40;
-			}
-			else {
-				cp++;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr1 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr2 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr3 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sAppr4 = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sSex = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sSkinCol = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sLevel = *wp;
-				cp += 2;
-
-				dwp = (DWORD *)cp;
-				m_pCharList[i]->m_iExp = *dwp;
-				cp += 4;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sStr = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sVit = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sDex = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sInt = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sMag = *wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_sChr = *wp;
-				cp += 2;
-
-				ip = (int *)cp; // v1.4
-				m_pCharList[i]->m_iApprColor = *ip;
-				cp += 4;
-					   
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iYear = (int)*wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iMonth = (int)*wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iDay = (int)*wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iHour = (int)*wp;
-				cp += 2;
-
-				wp = (WORD *)cp;
-				m_pCharList[i]->m_iMinute = (int)*wp;
-				cp += 2;
-
-				ZeroMemory(m_pCharList[i]->m_cMapName, sizeof(m_pCharList[i]->m_cMapName));
-				memcpy(m_pCharList[i]->m_cMapName, cp, 10);
-				cp += 10;
-			}
-		}
-		ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
-		ZeroMemory(m_cMsg, sizeof(m_cMsg));
-		strcpy(m_cMsg, "47");
-		break;
-
-	case DEF_LOGRESMSGTYPE_NEWCHARACTERFAILED:
-		// 새 캐릭터 생성에 실패했다.
-		ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
-		ZeroMemory(m_cMsg, sizeof(m_cMsg));
-		strcpy(m_cMsg, "28");
-		break;
-
-	case DEF_LOGRESMSGTYPE_ALREADYEXISTINGCHARACTER:
-		// 새 캐릭터 생성에 실패했다. - 이미 존재하는 캐릭터이다.
-		ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
-		ZeroMemory(m_cMsg, sizeof(m_cMsg));
-		strcpy(m_cMsg, "29");
-		break;
-
 	case DEF_ENTERGAMERESTYPE_PLAYING:
 		// 현재 플레이 중이다. 
 		ChangeGameMode(DEF_GAMEMODE_ONQUERYFORCELOGIN);
@@ -15027,6 +14690,12 @@ void CGame::LoginLinkInit()
 	stHandlers.on_account = [this](hb::net::login::account_result eResult) {
 		OnLoginLinkAccount(eResult);
 	};
+	stHandlers.on_create = [this](hb::net::login::character_result eResult, const std::vector<hb::net::character_summary> & characters) {
+		OnLoginLinkCharacter(eResult, characters, TRUE);
+	};
+	stHandlers.on_delete = [this](hb::net::login::character_result eResult, const std::vector<hb::net::character_summary> & characters) {
+		OnLoginLinkCharacter(eResult, characters, FALSE);
+	};
 	stHandlers.on_failed = [this](std::string_view sWhy) {
 		OnLoginLinkFailed(sWhy);
 	};
@@ -15053,7 +14722,6 @@ BOOL CGame::bBeginCreateAccountRequest()
 
 void CGame::OnLoginLinkLogin(const hb::net::login::login_response & stReply, const std::vector<hb::net::character_summary> & characters)
 {
- int i, iCount;
  const char * pCode;
 
 	if (stReply.result == hb::net::login::login_result::version_mismatch) {
@@ -15084,6 +14752,16 @@ void CGame::OnLoginLinkLogin(const hb::net::login::login_response & stReply, con
 	m_iIpYear = m_iIpMonth = m_iIpDay = 0;
 	m_iTimeLeftSecAccount = 0;
 	m_iTimeLeftSecIP = 0;
+
+	ApplyCharacterList(characters);
+	ChangeGameMode(DEF_GAMEMODE_ONSELECTCHARACTER);
+	ClearContents_OnSelectCharacter();
+}
+
+// Fills the four select-screen slots from the Login server's character_list.
+void CGame::ApplyCharacterList(const std::vector<hb::net::character_summary> & characters)
+{
+ int i, iCount;
 
 	for (i = 0; i < 4; i++)
 	if (m_pCharList[i] != NULL) {
@@ -15134,9 +14812,6 @@ void CGame::OnLoginLinkLogin(const hb::net::login::login_response & stReply, con
 		m_pCharList[i]->m_iMinute = stChar.last_saved.minute;
 		memcpy(m_pCharList[i]->m_cMapName, sMap.data(), (sMap.size() < 10) ? sMap.size() : 10);
 	}
-
-	ChangeGameMode(DEF_GAMEMODE_ONSELECTCHARACTER);
-	ClearContents_OnSelectCharacter();
 }
 
 void CGame::OnLoginLinkAccount(hb::net::login::account_result eResult)
@@ -15144,6 +14819,45 @@ void CGame::OnLoginLinkAccount(hb::net::login::account_result eResult)
 	ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
 	ZeroMemory(m_cMsg, sizeof(m_cMsg));
 	strcpy(m_cMsg, AccountResultCode(eResult));
+}
+
+// CLIENT-019: create and delete character go over the login session (LoginLink). The screens behind the
+// message are the legacy ones: "2x" returns to Create Character, "47"/"3x" to the character select.
+BOOL CGame::bBeginCreateCharacterRequest()
+{
+ LoginLink::new_character stNew;
+
+	if (m_pLoginLink == NULL) return FALSE;
+	stNew.name = std::string_view(m_cPlayerName, strnlen(m_cPlayerName, sizeof(m_cPlayerName)));
+	stNew.sex = (std::uint8_t)m_cGender;
+	stNew.skin = (std::uint8_t)m_cSkinCol;
+	stNew.hair_style = (std::uint8_t)m_cHairStyle;
+	stNew.hair_colour = (std::uint8_t)m_cHairCol;
+	stNew.underwear_colour = (std::uint8_t)m_cUnderCol;
+	stNew.stats.strength     = (std::uint8_t)m_ccStr;
+	stNew.stats.vitality     = (std::uint8_t)m_ccVit;
+	stNew.stats.dexterity    = (std::uint8_t)m_ccDex;
+	stNew.stats.intelligence = (std::uint8_t)m_ccInt;
+	stNew.stats.magic        = (std::uint8_t)m_ccMag;
+	stNew.stats.charisma     = (std::uint8_t)m_ccChr;
+	return m_pLoginLink->request_create_character(stNew) ? TRUE : FALSE;
+}
+
+BOOL CGame::bBeginDeleteCharacterRequest()
+{
+ int iSlot = (int)m_wEnterGameType - 1;
+
+	if (m_pLoginLink == NULL) return FALSE;
+	if ((iSlot < 0) || (iSlot > 3) || (m_pCharList[iSlot] == NULL)) return FALSE;
+	return m_pLoginLink->request_delete_character(std::string_view(m_pCharList[iSlot]->m_cName, strnlen(m_pCharList[iSlot]->m_cName, 10))) ? TRUE : FALSE;
+}
+
+void CGame::OnLoginLinkCharacter(hb::net::login::character_result eResult, const std::vector<hb::net::character_summary> & characters, BOOL bCreate)
+{
+	if (eResult == hb::net::login::character_result::ok) ApplyCharacterList(characters);
+	ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
+	ZeroMemory(m_cMsg, sizeof(m_cMsg));
+	strcpy(m_cMsg, (bCreate != FALSE) ? CreateCharacterResultCode(eResult) : DeleteCharacterResultCode(eResult));
 }
 
 void CGame::OnLoginLinkFailed(std::string_view sWhy)
@@ -25639,12 +25353,13 @@ void CGame::UpdateScreen_OnCreateNewCharacter()
 			ZeroMemory(m_cPlayerName, sizeof(m_cPlayerName));
 			strcpy(m_cPlayerName, cName);
 			
-			m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-			m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort, WM_USER_LOGSOCKETEVENT);
-			m_pLSock->bInitBufferSize(30000);
-			// 게임모드 변환 
-			ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
-			m_dwConnectMode = MSGID_REQUEST_CREATENEWCHARACTER;
+			// CLIENT-019: the typed create_character_request over the login session.
+			if (bBeginCreateCharacterRequest() == FALSE) {
+				ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
+				delete pMI;
+				return;
+			}
+			ChangeGameMode(DEF_GAMEMODE_ONWAITINGRESPONSE);
 			ZeroMemory(m_cMsg, sizeof(m_cMsg));
 			strcpy(m_cMsg,"22");
 			delete pMI;
@@ -29327,12 +29042,13 @@ void CGame::UpdateScreen_OnQueryDeleteCharacter()
 		switch (iMIbuttonNum) {
 		case 1:
 			// 캐릭터를 삭제를 요청한다. 
-			m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-			m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort, WM_USER_LOGSOCKETEVENT);
-			m_pLSock->bInitBufferSize(30000);
-			// 게임모드 변환
-			ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
-			m_dwConnectMode  = MSGID_REQUEST_DELETECHARACTER;
+			// CLIENT-019: the typed delete_character_request over the login session.
+			if (bBeginDeleteCharacterRequest() == FALSE) {
+				ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
+				delete pMI;
+				return;
+			}
+			ChangeGameMode(DEF_GAMEMODE_ONWAITINGRESPONSE);
 			ZeroMemory(m_cMsg, sizeof(m_cMsg));
 			strcpy(m_cMsg,"33");
 			delete pMI;
@@ -31173,6 +30889,36 @@ void CGame::UpdateScreen_OnLogResMsg()
 	case 'O':
 		PutString_SprFont(172 + 36, 165, "Can not create new account!", 7,0,0);
 		PutAlignedString(198, 453, 210,  "The account name is not valid.");
+		break;
+
+	case 'P': // CLIENT-019
+		PutString_SprFont(172 + 24, 165, "Character name is not valid!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "Use 1 to 10 letters or digits.");
+		break;
+
+	case 'Q':
+		PutString_SprFont(172 + 36, 165, "Can not create new character!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "The starting stats are not valid.");
+		break;
+
+	case 'R':
+		PutString_SprFont(172 + 36, 165, "Can not create new character!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "There is no free character slot.");
+		break;
+
+	case 'S':
+		PutString_SprFont(172 + 48, 165, "Character level too high!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "This level can not be changed here.");
+		break;
+
+	case 'T':
+		PutString_SprFont(172 + 48, 165, "Not existing character!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "The character was not found.");
+		break;
+
+	case 'V':
+		PutString_SprFont(172 + 36, 165, "Can not delete character!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "Please try again later.");
 		break;
 
 	case 'I': // v2.11 성후니 추가 중문 과금용 에라 메세지 글씨 깨져 있어도 안심할것 ㅡㅡ ;		

@@ -27,6 +27,11 @@ public:
 		std::function<void(const hb::net::login::login_response&, const std::vector<hb::net::character_summary>&)> on_login;
 		// The create-account reply.
 		std::function<void(hb::net::login::account_result)> on_account;
+		// The create_character reply (CLIENT-019). characters holds the fresh character_list when the result
+		// is ok, else it is empty and the session stays open.
+		std::function<void(hb::net::login::character_result, const std::vector<hb::net::character_summary>&)> on_create;
+		// The delete_character reply, shaped like on_create.
+		std::function<void(hb::net::login::character_result, const std::vector<hb::net::character_summary>&)> on_delete;
 		// No reply will come: resolve or connect failed, the connection closed first, or the reply was
 		// malformed. The text is for the log.
 		std::function<void(std::string_view)> on_failed;
@@ -42,6 +47,26 @@ public:
 	// holds a NUL; nothing is sent then. A request in flight is dropped first.
 	bool request_login(std::string_view account, std::string_view password, std::string_view world);
 	bool request_create_account(std::string_view account, std::string_view password, std::string_view email);
+
+	// The fields of a character to create; the text is 1..10 letters or digits (the Login server checks).
+	struct new_character
+	{
+		std::string_view name;
+		std::uint8_t sex = 1;
+		std::uint8_t skin = 1;
+		std::uint8_t hair_style = 0;
+		std::uint8_t hair_colour = 0;
+		std::uint8_t underwear_colour = 0;
+		hb::net::character_stats stats{};
+	};
+
+	// Character requests (CLIENT-019) go over the session opened by a successful login. False, with nothing
+	// sent, when there is no session, another request is pending, or the name does not fit the wire field.
+	bool request_create_character(const new_character& fields);
+	bool request_delete_character(std::string_view name);
+
+	// True after a login ok (and its character list) until the connection closes or is cancelled.
+	bool has_session() const;
 
 	// Drops the request in flight and closes the connection; no handler is called for it.
 	void cancel();
@@ -62,3 +87,7 @@ private:
 // version_mismatch goes to the version screen.
 const char* LoginResultCode(hb::net::login::login_result result);
 const char* AccountResultCode(hb::net::login::account_result result);
+// CLIENT-019: the message code for a create or delete character reply. The first character names the
+// screen behind the message (2 create character, 3 character select), the second the text.
+const char* CreateCharacterResultCode(hb::net::login::character_result result);
+const char* DeleteCharacterResultCode(hb::net::login::character_result result);

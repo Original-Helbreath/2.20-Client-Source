@@ -1,9 +1,6 @@
-## Log in through the shared network layer
+## Character select through LoginLink
 
 **Added**
-- Create an account and log in from the client against the new Login server.
+- The character-select screen shows your characters, and you can create and delete them.
 
-**Changed**
-- The Login server address comes from `login.json`.
-
-Summary: The client creates accounts and logs in (2026-10-27)
+Summary: Character select works with the new servers (2026-10-27)

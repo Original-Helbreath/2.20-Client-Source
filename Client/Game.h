@@ -511,6 +511,10 @@ public:
 	BOOL bBeginCreateAccountRequest();
 	void OnLoginLinkLogin(const hb::net::login::login_response & stReply, const std::vector<hb::net::character_summary> & characters);
 	void OnLoginLinkAccount(hb::net::login::account_result eResult);
+	BOOL bBeginCreateCharacterRequest();
+	BOOL bBeginDeleteCharacterRequest();
+	void ApplyCharacterList(const std::vector<hb::net::character_summary> & characters);
+	void OnLoginLinkCharacter(hb::net::login::character_result eResult, const std::vector<hb::net::character_summary> & characters, BOOL bCreate);
 	void OnLoginLinkFailed(std::string_view sWhy);
 	void OnTimer();
 	void LogEventHandler(char * pData);
