@@ -52,6 +52,9 @@ public:
 	IDirectDrawSurface7 * pCreateOffScreenSurface(WORD iSzX, WORD iSzY);
 	HRESULT iSetColorKey(IDirectDrawSurface7 * pdds4, COLORREF rgb);
 	HRESULT iFlip();
+	static DWORD dwWindowStyle(BOOL bFullMode);	// RENDER-016
+	void _PlaceWindowed(HWND hWnd);				// RENDER-016
+	HRESULT _PresentWindowed();					// RENDER-016
 	bool Screenshot(LPCTSTR FileName, LPDIRECTDRAWSURFACE7 lpDDS);
 	
 	long    m_lTransG100[64][64], m_lTransRB100[64][64];

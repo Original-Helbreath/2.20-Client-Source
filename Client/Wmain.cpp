@@ -18,6 +18,7 @@
 #include "winmain.h"
 #include "Game.h"
 #include "GlobalDef.h"
+#include "ClientData.h"
 
 #ifdef DEF_HTMLCOMMOM
 	HWND	m_hwndWebCtrl;
@@ -93,8 +94,10 @@ LRESULT CALLBACK WndProc(HWND hWnd,UINT message,WPARAM wParam, LPARAM lParam)
 	
 	case WM_SYSCOMMAND:
 		// 스크린 세이버의 동작을 막는다.
-		if((wParam&0xFFF0)==SC_SCREENSAVE || (wParam&0xFFF0)==SC_MONITORPOWER) 
-			return 0; 
+		if((wParam&0xFFF0)==SC_SCREENSAVE || (wParam&0xFFF0)==SC_MONITORPOWER)
+			return 0;
+		// RENDER-016: Alt alone must not open the window menu (its modal loop would stop the game loop).
+		if ((wParam&0xFFF0)==SC_KEYMENU) return 0;
 		return DefWindowProc(hWnd, message, wParam, lParam);
 			
 	case WM_USER_TIMERSIGNAL:
@@ -204,7 +207,24 @@ LRESULT CALLBACK WndProc(HWND hWnd,UINT message,WPARAM wParam, LPARAM lParam)
 		break;
 #endif
 
+	case WM_ERASEBKGND:
+		// RENDER-016: the game paints the whole client area; erasing it first only flashes white.
+		return 1;
+
+	case WM_PAINT:
+		// RENDER-016: windowed, repaint from the last frame (needed while the game is not drawing, e.g. inactive).
+		if (G_pGame->m_DDraw.m_bFullMode == FALSE) {
+			PAINTSTRUCT ps;
+			BeginPaint(hWnd, &ps);
+			EndPaint(hWnd, &ps);
+			G_pGame->m_DDraw._PresentWindowed();
+			return 0;
+		}
+		return DefWindowProc(hWnd, message, wParam, lParam);
+
 	case WM_SETCURSOR:
+		// RENDER-016: the game draws its own cursor over the client area only; the frame keeps the system one.
+		if (LOWORD(lParam) != HTCLIENT) return DefWindowProc(hWnd, message, wParam, lParam);
 		SetCursor(NULL);
 		return TRUE;
 
@@ -235,6 +255,11 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	srand((unsigned)time(NULL));
 	char *pJammer = new char[(rand() % 100) +1];
 	G_pGame = new class CGame; // v2.171
+
+	// RENDER-016: windowed or full-screen comes from client.json (default windowed), before the window is made.
+	ClientData::ClientCfg clientCfg;
+	ClientData::ReadClientConfig("client.json", clientCfg);
+	G_pGame->m_DDraw.m_bFullMode = clientCfg.windowed ? FALSE : TRUE;
 
 #ifdef DEF_USING_WIN_IME
 	HINSTANCE hRichDll = LoadLibrary( "Riched20.dll" );
@@ -296,7 +321,8 @@ BOOL InitInstance( HINSTANCE hInstance, int nCmdShow )
 	int cy = GetSystemMetrics(SM_CYFULLSCREEN)/2;
 	if(cy>280) cy -= 40;
 //#ifdef DEF_FULL_SCREEN
-	G_hWnd = CreateWindowEx(NULL, szAppClass, "Helbreath Crusade", WS_POPUP, cx-320, cy-240, 
+	// RENDER-016: a captioned, minimisable window when windowed (DXC_ddraw::bInit sizes and places it).
+	G_hWnd = CreateWindowEx(NULL, szAppClass, "Helbreath Crusade", DXC_ddraw::dwWindowStyle(G_pGame->m_DDraw.m_bFullMode), cx-320, cy-240,
 							640, 480, NULL, NULL, hInstance, NULL);     
 //#else
 //	G_hWnd = CreateWindowEx( 0, szAppClass, "HClient", WS_POPUP | WS_BORDER, cx-320, cy-240,
@@ -348,7 +374,8 @@ void EventLoop()
             TranslateMessage(&msg);
             DispatchMessage(&msg);
 		}
-		else if (G_pGame->m_bIsProgramActive) G_pGame->UpdateScreen();
+		// RENDER-016: windowed, the game keeps drawing while another window has focus (not while minimised).
+		else if (G_pGame->m_bIsProgramActive || ((G_pGame->m_DDraw.m_bFullMode == FALSE) && (IsIconic(G_hWnd) == FALSE))) G_pGame->UpdateScreen();
 		else if (G_pGame->m_cGameMode == DEF_GAMEMODE_ONLOADING) G_pGame->UpdateScreen_OnLoading( FALSE );
 		else WaitMessage();
 	}

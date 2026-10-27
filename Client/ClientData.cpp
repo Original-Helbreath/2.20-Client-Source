@@ -39,7 +39,7 @@ struct Doc {
 	UINT cp = 0;
 };
 
-bool Load(const char * pPath, const char * pFormat, Doc & doc)
+bool Load(const char * pPath, const char * pFormat, Doc & doc, bool bAllowComments = false)
 {
 	std::error_code ec;
 	if (!std::filesystem::is_regular_file(std::filesystem::u8path(pPath), ec)) return false;
@@ -48,7 +48,7 @@ bool Load(const char * pPath, const char * pFormat, Doc & doc)
 	if (!in) return false;
 	std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 
-	doc.j = json::parse(text, nullptr, false);   // no exceptions: invalid JSON is "discarded"
+	doc.j = json::parse(text, nullptr, false, bAllowComments);   // no exceptions: invalid JSON is "discarded"
 	if (doc.j.is_discarded() || !doc.j.is_object()) return false;
 
 	const auto fmt = doc.j.find("format");
@@ -237,6 +237,19 @@ bool ReadLoginConfig(const char * pPath, LoginCfg & out)
 	if (doc.j.contains("log_server_port")) {
 		if (!GetInt(doc.j, "log_server_port", out.port)) return false;
 		out.hasPort = true;
+	}
+	return true;
+}
+
+bool ReadClientConfig(const char * pPath, ClientCfg & out)
+{
+	out = ClientCfg();
+	Doc doc;
+	if (!Load(pPath, "client-config", doc, true)) return false;
+	const auto windowed = doc.j.find("windowed");
+	if (windowed != doc.j.end()) {
+		if (!windowed->is_boolean()) return false;
+		out.windowed = windowed->get<bool>();
 	}
 	return true;
 }

@@ -84,7 +84,7 @@ IDirectDrawSurface7 * CSprite::_pMakeSpriteSurface()
 
 	// 컬러키값을 얻어온다. 
 	DDSURFACEDESC2  ddsd;
-	ddsd.dwSize = 124;
+	ddsd.dwSize = sizeof(ddsd);	// RENDER-016: 124 is the x86 size; x64 DDSURFACEDESC2 is larger
 	if (pdds4->Lock(NULL, &ddsd, DDLOCK_WAIT, NULL) != DD_OK) return NULL;
 	pdds4->Unlock(NULL);
 
@@ -688,7 +688,7 @@ void CSprite::iRestore()
 
 	// 주소를 다시 구한다.
 	DDSURFACEDESC2  ddsd;
-	ddsd.dwSize = 124;
+	ddsd.dwSize = sizeof(ddsd);	// RENDER-016: 124 is the x86 size; x64 DDSURFACEDESC2 is larger
 	if (m_lpSurface->Lock(NULL, &ddsd, DDLOCK_WAIT, NULL) != DD_OK) return;
 	m_pSurfaceAddr = (WORD *)ddsd.lpSurface;
 	m_lpSurface->Unlock(NULL);
@@ -2354,7 +2354,7 @@ bool CSprite::_iOpenSprite()
 	m_bIsSurfaceEmpty  = FALSE;
 	// 스프라이트의 주소를 구한다.
 	DDSURFACEDESC2  ddsd;
-	ddsd.dwSize = 124;
+	ddsd.dwSize = sizeof(ddsd);	// RENDER-016: 124 is the x86 size; x64 DDSURFACEDESC2 is larger
 	if (m_lpSurface->Lock(NULL, &ddsd, DDLOCK_WAIT, NULL) != DD_OK) return FALSE;	
 	m_pSurfaceAddr = (WORD *)ddsd.lpSurface;
 	m_sPitch = (short)ddsd.lPitch >> 1;	

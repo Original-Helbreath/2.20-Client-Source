@@ -1,6 +1,9 @@
-## Build the client from the tree
+## Run the client in a window
 
 **Added**
-- The game client can now be built with a current version of Visual Studio.
+- The game client can run in a normal window, set in `client.json`.
 
-Summary: The client builds again with modern tools, the first step toward running and updating it (2026-10-27)
+**Fixed**
+- The 64-bit client draws the screen instead of showing black.
+
+Summary: The client now runs in a window with correct colours, ready for connection testing (2026-10-27)
