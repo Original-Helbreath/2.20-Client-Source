@@ -662,7 +662,8 @@ BOOL CMisc::bIsValidEmail(char *pStr)
 	ZeroMemory( cEmail, sizeof(cEmail) );
 	memcpy( cEmail, pStr, len );
 	BOOL bFlag = FALSE;
-	for( int i=0 ; i<len ; i++ )
+	int i;
+	for( i=0 ; i<len ; i++ )
 	{
 		if( cEmail[i] == '@' ) bFlag = TRUE;
 	}

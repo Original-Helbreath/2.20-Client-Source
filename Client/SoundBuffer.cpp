@@ -4,7 +4,6 @@
 
 #include <windows.h>
 #include <stdio.h>
-#include <iostream.h>
 
 #include "dsound.h"
 #include "SoundBuffer.h"

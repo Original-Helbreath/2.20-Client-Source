@@ -1,0 +1,4 @@
+# Build output (client.sln: build/x64/<cfg>/ and build/obj/)
+build/
+.vs/
+*.user

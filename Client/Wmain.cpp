@@ -368,7 +368,7 @@ void OnDestroy()
 	PostQuitMessage(0);
 }
 
-void CALLBACK _TimerFunc(UINT wID, UINT wUser, DWORD dwUSer, DWORD dw1, DWORD dw2)
+void CALLBACK _TimerFunc(UINT wID, UINT wUser, DWORD_PTR dwUSer, DWORD_PTR dw1, DWORD_PTR dw2)
 {
 	PostMessage(G_hWnd, WM_USER_TIMERSIGNAL, wID, NULL);
 }

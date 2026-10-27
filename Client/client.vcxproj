@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<ItemGroup Label="ProjectConfigurations">
+		<ProjectConfiguration Include="Debug|x64">
+			<Configuration>Debug</Configuration>
+			<Platform>x64</Platform>
+		</ProjectConfiguration>
+		<ProjectConfiguration Include="Release|x64">
+			<Configuration>Release</Configuration>
+			<Platform>x64</Platform>
+		</ProjectConfiguration>
+	</ItemGroup>
+	<PropertyGroup Label="Globals">
+		<VCProjectVersion>18.0</VCProjectVersion>
+		<ProjectGuid>{3C8E2B71-5D4A-4F19-A6B0-7E21C9D04F52}</ProjectGuid>
+		<RootNamespace>client</RootNamespace>
+		<WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+	</PropertyGroup>
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+	<PropertyGroup Label="Configuration">
+		<ConfigurationType>Application</ConfigurationType>
+		<PlatformToolset>v145</PlatformToolset>
+		<!-- The 2.20 client is written against the ANSI Win32 API (char strings throughout). -->
+		<CharacterSet>MultiByte</CharacterSet>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+		<UseDebugLibraries>true</UseDebugLibraries>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+		<UseDebugLibraries>false</UseDebugLibraries>
+		<WholeProgramOptimization>true</WholeProgramOptimization>
+	</PropertyGroup>
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+	<ImportGroup Label="PropertySheets">
+		<Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+	</ImportGroup>
+	<PropertyGroup>
+		<OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
+		<IntDir>$(SolutionDir)build\obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
+		<TargetName>Client</TargetName>
+	</PropertyGroup>
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<WarningLevel>Level3</WarningLevel>
+			<SDLCheck>false</SDLCheck>
+			<ConformanceMode>true</ConformanceMode>
+			<LanguageStandard>stdcpp20</LanguageStandard>
+			<AdditionalOptions>/Zc:__cplusplus /Zc:strictStrings- %(AdditionalOptions)</AdditionalOptions>
+			<AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)External;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+			<!-- Legacy CRT and Winsock calls are kept as written until the client is converted (forward motion tickets). -->
+			<PreprocessorDefinitions>WIN32;_WINDOWS;_CRT_SECURE_NO_WARNINGS;_CRT_NON_CONFORMING_SWPRINTFS;_WINSOCK_DEPRECATED_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ClCompile>
+		<Link>
+			<SubSystem>Windows</SubSystem>
+			<GenerateDebugInformation>true</GenerateDebugInformation>
+			<AdditionalDependencies>ddraw.lib;dsound.lib;dinput8.lib;dxguid.lib;ws2_32.lib;wsock32.lib;winmm.lib;imm32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+		</Link>
+	</ItemDefinitionGroup>
+	<ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+		<ClCompile>
+			<PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ClCompile>
+	</ItemDefinitionGroup>
+	<ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+		<ClCompile>
+			<FunctionLevelLinking>true</FunctionLevelLinking>
+			<IntrinsicFunctions>true</IntrinsicFunctions>
+			<PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ClCompile>
+		<Link>
+			<EnableCOMDATFolding>true</EnableCOMDATFolding>
+			<OptimizeReferences>true</OptimizeReferences>
+		</Link>
+	</ItemDefinitionGroup>
+	<ItemGroup>
+		<ClCompile Include="BuildItem.cpp" />
+		<ClCompile Include="CharInfo.cpp" />
+		<ClCompile Include="ClientData.cpp" />
+		<ClCompile Include="Curse.cpp" />
+		<ClCompile Include="DXC_ddraw.cpp" />
+		<ClCompile Include="DXC_dinput.cpp" />
+		<ClCompile Include="DXC_dsound.cpp" />
+		<ClCompile Include="Effect.cpp" />
+		<ClCompile Include="Game.cpp" />
+		<ClCompile Include="GameMonitor.cpp" />
+		<ClCompile Include="Item.cpp" />
+		<ClCompile Include="ItemName.cpp" />
+		<ClCompile Include="Magic.cpp" />
+		<ClCompile Include="MapData.cpp" />
+		<ClCompile Include="Misc.cpp" />
+		<ClCompile Include="MouseInterface.cpp" />
+		<ClCompile Include="Msg.cpp" />
+		<ClCompile Include="Mydib.cpp" />
+		<ClCompile Include="Skill.cpp" />
+		<ClCompile Include="SoundBuffer.cpp" />
+		<ClCompile Include="Sprite.cpp" />
+		<ClCompile Include="StdAfx.cpp" />
+		<ClCompile Include="Tile.cpp" />
+		<ClCompile Include="TileSpr.cpp" />
+		<ClCompile Include="WEBCTRL.CPP" />
+		<ClCompile Include="Wmain.cpp" />
+		<ClCompile Include="XSocket.cpp" />
+		<ClCompile Include="YWSound.cpp" />
+	</ItemGroup>
+	<ItemGroup>
+		<ClInclude Include="ActionID.h" />
+		<ClInclude Include="BuildItem.h" />
+		<ClInclude Include="CharInfo.h" />
+		<ClInclude Include="ClientData.h" />
+		<ClInclude Include="CNTREVNT.H" />
+		<ClInclude Include="Curse.h" />
+		<ClInclude Include="DDRAW.H" />
+		<ClInclude Include="DINPUT.H" />
+		<ClInclude Include="DSOUND.H" />
+		<ClInclude Include="DXC_ddraw.h" />
+		<ClInclude Include="DXC_dinput.h" />
+		<ClInclude Include="DXC_dsound.h" />
+		<ClInclude Include="DynamicObjectID.h" />
+		<ClInclude Include="Effect.h" />
+		<ClInclude Include="Game.h" />
+		<ClInclude Include="GameMonitor.h" />
+		<ClInclude Include="GlobalDef.h" />
+		<ClInclude Include="GlobalVal.h" />
+		<ClInclude Include="Item.h" />
+		<ClInclude Include="ItemName.h" />
+		<ClInclude Include="lan_chi.h" />
+		<ClInclude Include="lan_eng.h" />
+		<ClInclude Include="lan_jap.h" />
+		<ClInclude Include="lan_kor.h" />
+		<ClInclude Include="lan_tai.h" />
+		<ClInclude Include="Magic.h" />
+		<ClInclude Include="MapData.h" />
+		<ClInclude Include="Misc.h" />
+		<ClInclude Include="MouseInterface.h" />
+		<ClInclude Include="Msg.h" />
+		<ClInclude Include="Mydib.h" />
+		<ClInclude Include="NetMessages.h" />
+		<ClInclude Include="resource.h" />
+		<ClInclude Include="Skill.h" />
+		<ClInclude Include="SoundBuffer.h" />
+		<ClInclude Include="SoundID.h" />
+		<ClInclude Include="Sprite.h" />
+		<ClInclude Include="SpriteID.h" />
+		<ClInclude Include="StdAfx.h" />
+		<ClInclude Include="StrSplit.h" />
+		<ClInclude Include="Tile.h" />
+		<ClInclude Include="TileSpr.h" />
+		<ClInclude Include="WEBCTRL.H" />
+		<ClInclude Include="Winmain.h" />
+		<ClInclude Include="XSocket.h" />
+		<ClInclude Include="YWSound.h" />
+	</ItemGroup>
+	<ItemGroup>
+		<ResourceCompile Include="resource.rc" />
+	</ItemGroup>
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
