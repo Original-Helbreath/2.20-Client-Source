@@ -39,6 +39,9 @@
 		<IntDir>$(SolutionDir)build\obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
 		<TargetName>Client</TargetName>
 	</PropertyGroup>
+	<PropertyGroup>
+		<ExternalIncludePath>$(SolutionDir)shared\third_party\asio\include;$(ExternalIncludePath)</ExternalIncludePath>
+	</PropertyGroup>
 	<ItemDefinitionGroup>
 		<ClCompile>
 			<WarningLevel>Level3</WarningLevel>
@@ -101,6 +104,18 @@
 		<ClCompile Include="Wmain.cpp" />
 		<ClCompile Include="XSocket.cpp" />
 		<ClCompile Include="YWSound.cpp" />
+		<ClCompile Include="LoginLink.cpp" />
+	</ItemGroup>
+	<ItemGroup>
+		<!-- CLIENT-018: the shared/ submodule's network, protocol and log code (one implementation for all three programs).
+		     Asio is standalone and header-only (shared\third_party\asio); only these files see it. -->
+		<ClCompile Include="..\shared\protocol\frame_codec.cpp" />
+		<ClCompile Include="..\shared\log\log.cpp" />
+		<ClCompile Include="..\shared\log\console_win32.cpp" />
+		<ClCompile Include="..\shared\log\console_posix.cpp" />
+		<ClCompile Include="..\shared\net\connection.cpp" />
+		<ClCompile Include="..\shared\net\client.cpp" />
+		<ClCompile Include="..\shared\net\server.cpp" />
 	</ItemGroup>
 	<ItemGroup>
 		<ClInclude Include="ActionID.h" />
@@ -149,9 +164,40 @@
 		<ClInclude Include="Winmain.h" />
 		<ClInclude Include="XSocket.h" />
 		<ClInclude Include="YWSound.h" />
+		<ClInclude Include="LoginLink.h" />
+		<ClInclude Include="..\shared\protocol\wire.h" />
+		<ClInclude Include="..\shared\protocol\span_reader.h" />
+		<ClInclude Include="..\shared\protocol\span_writer.h" />
+		<ClInclude Include="..\shared\protocol\fixed_string.h" />
+		<ClInclude Include="..\shared\protocol\frame_header.h" />
+		<ClInclude Include="..\shared\protocol\common_types.h" />
+		<ClInclude Include="..\shared\protocol\frame_codec.h" />
+		<ClInclude Include="..\shared\protocol\field_checks.h" />
+		<ClInclude Include="..\shared\protocol\message_id.h" />
+		<ClInclude Include="..\shared\protocol\login_messages.h" />
+		<ClInclude Include="..\shared\protocol\link_messages.h" />
+		<ClInclude Include="..\shared\protocol\message_codec.h" />
+		<ClInclude Include="..\shared\log\log.h" />
+		<ClInclude Include="..\shared\log\console.h" />
+		<ClInclude Include="..\shared\net\asio_config.h" />
+		<ClInclude Include="..\shared\net\connection.h" />
+		<ClInclude Include="..\shared\net\server.h" />
+		<ClInclude Include="..\shared\net\client.h" />
+		<ClInclude Include="..\shared\net\periodic_timer.h" />
 	</ItemGroup>
 	<ItemGroup>
 		<ResourceCompile Include="resource.rc" />
+	</ItemGroup>
+	<ItemGroup>
+		<!-- Asio is configured for the files that include it (shared\net, LoginLink); the legacy client code is unchanged. -->
+		<ClCompile Update="LoginLink.cpp;..\shared\net\*.cpp">
+			<PreprocessorDefinitions>ASIO_STANDALONE;ASIO_NO_DEPRECATED;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+			<AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+			<AdditionalIncludeDirectories>$(SolutionDir)shared\protocol;$(SolutionDir)shared\net;$(SolutionDir)shared\log;$(SolutionDir)shared\third_party\asio\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+		</ClCompile>
+		<ClCompile Update="..\shared\log\*.cpp;..\shared\protocol\*.cpp">
+			<AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+		</ClCompile>
 	</ItemGroup>
 	<ItemGroup>
 		<!-- RENDER-016: client settings, placed beside Client.exe. -->

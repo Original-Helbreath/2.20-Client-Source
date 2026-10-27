@@ -1,6 +1,9 @@
-## Start without Curse.txt
+## Log in through the shared network layer
 
-**Fixed**
-- The client no longer stops at start-up with a "CURSE.TXT" error.
+**Added**
+- Create an account and log in from the client against the new Login server.
 
-Summary: The client starts straight to the main menu (2026-10-27)
+**Changed**
+- The Login server address comes from `login.json`.
+
+Summary: The client creates accounts and logs in (2026-10-27)

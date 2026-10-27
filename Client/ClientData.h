@@ -67,7 +67,11 @@ struct LoginCfg {
 	bool hasPort = false;
 	int port = 0;
 };
-bool ReadLoginConfig(const char * pPath, LoginCfg & out);
+// Absent: there is no login.json at all (the only case that may keep built-in defaults).
+// Invalid: the file exists but is malformed, has the wrong format, a field of the wrong type, an empty
+// address or a port outside 1..65535; out is left empty. A caller must not fall back on invalid.
+enum class LoginConfigStatus { Ok, Absent, Invalid };
+LoginConfigStatus ReadLoginConfig(const char * pPath, LoginCfg & out);
 
 // format "client-config" (client.json; // and /* */ comments allowed). Client settings that are not
 // part of the 2.20 data. A missing or invalid file leaves the defaults, which are windowed.

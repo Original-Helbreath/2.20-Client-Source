@@ -225,20 +225,27 @@ bool ReadSkillConfig(const char * pPath, std::vector<SkillCfg> & out)
 	return true;
 }
 
-bool ReadLoginConfig(const char * pPath, LoginCfg & out)
+LoginConfigStatus ReadLoginConfig(const char * pPath, LoginCfg & out)
 {
 	out = LoginCfg();
+	std::error_code ec;
+	const bool bExists = std::filesystem::exists(std::filesystem::u8path(pPath), ec);
+	if (ec) return LoginConfigStatus::Invalid;
+	if (!bExists) return LoginConfigStatus::Absent;
+
 	Doc doc;
-	if (!Load(pPath, "login-config", doc)) return false;
+	LoginCfg cfg;
+	if (!Load(pPath, "login-config", doc)) return LoginConfigStatus::Invalid;
 	if (doc.j.contains("log_server_address")) {
-		if (!GetString(doc.j, "log_server_address", doc.cp, out.address)) return false;
-		out.hasAddress = true;
+		if (!GetString(doc.j, "log_server_address", doc.cp, cfg.address) || cfg.address.empty()) return LoginConfigStatus::Invalid;
+		cfg.hasAddress = true;
 	}
 	if (doc.j.contains("log_server_port")) {
-		if (!GetInt(doc.j, "log_server_port", out.port)) return false;
-		out.hasPort = true;
+		if (!GetInt(doc.j, "log_server_port", cfg.port) || cfg.port < 1 || cfg.port > 65535) return LoginConfigStatus::Invalid;
+		cfg.hasPort = true;
 	}
-	return true;
+	out = cfg;	// only a fully valid file is handed back
+	return LoginConfigStatus::Ok;
 }
 
 bool ReadClientConfig(const char * pPath, ClientCfg & out)

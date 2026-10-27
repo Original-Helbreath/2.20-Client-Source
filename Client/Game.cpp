@@ -4,6 +4,7 @@
 
 
 #include "Game.h"
+#include "../shared/log/log.h"
 
 #if DEF_LANGUAGE == 1
 #include "lan_tai.h"
@@ -485,6 +486,7 @@ CGame::CGame()
 
 	m_pGSock   = NULL;
 	m_pLSock   = NULL;
+	m_pLoginLink = NULL;
 	m_pMapData = NULL;
 
 	m_cCommandCount  = 0;
@@ -887,6 +889,7 @@ BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 		MessageBox(m_hWnd, "login.json file contains wrong infomation.","ERROR",MB_ICONEXCLAMATION | MB_OK);
 		return FALSE;
 	}
+	LoginLinkInit();
 
 	if(bReadItemNameConfigFile() == FALSE) {
 		MessageBox(m_hWnd, "ItemName.cfg file contains wrong infomation.","ERROR",MB_ICONEXCLAMATION | MB_OK);
@@ -1094,6 +1097,7 @@ void CGame::Quit()
 
 	if (m_pGSock != NULL) delete m_pGSock;
 	if (m_pLSock != NULL) delete m_pLSock;
+	if (m_pLoginLink != NULL) delete m_pLoginLink;
 	if (G_pCalcSocket != NULL) delete G_pCalcSocket;
 	if (m_pCGameMonitor != NULL) delete m_pCGameMonitor;
 }  
@@ -1102,6 +1106,9 @@ void CGame::Quit()
 void CGame::UpdateScreen() 
 { 
 	G_dwGlobalTime = timeGetTime();  
+
+	// CLIENT-018: the Login server link has no thread; its replies are handled here, once per frame.
+	if (m_pLoginLink != NULL) m_pLoginLink->poll();
 
 	switch (m_cGameMode) {
 #ifdef DEF_MAKE_ACCOUNT
@@ -1598,68 +1605,10 @@ BOOL CGame::bSendCommand(DWORD dwMsgID, WORD wCommand, char cDir, int iV1, int i
 		iRet = m_pLSock->iSendMsg(cMsg, 46, cKey);
 		break;
 #endif	
-	case MSGID_REQUEST_CREATENEWACCOUNT:
-		// to Log Server
-		dwp = (DWORD *)(cMsg + DEF_INDEX4_MSGID);
-		*dwp = dwMsgID;
-		wp  = (WORD *)(cMsg + DEF_INDEX2_MSGTYPE);
-		*wp = NULL;
-
-		cp = (char *)(cMsg + DEF_INDEX2_MSGTYPE + 2);
-
-		ZeroMemory(cTxt, sizeof(cTxt)); // v1.4
-		memcpy(cTxt, m_cAccountName, 10);
-		memcpy(cp, cTxt, 10); 
-		cp += 10;
-
-		ZeroMemory(cTxt, sizeof(cTxt)); // v1.4
-		memcpy(cTxt, m_cAccountPassword, 10);
-		memcpy(cp, cTxt, 10); 
-		cp += 10;
-
-		memcpy(cp, m_cEmailAddr, 50);
-		cp += 50;
-
-		ZeroMemory(cTxt, sizeof(cTxt)); // v1.4
-		if ((rand() % 2) == 0) strcpy(cTxt, "Male");
-		else strcpy(cTxt, "Female");
-		memcpy(cp, cTxt, 10);
-		cp += 10;
-
-		memcpy(cp, m_cAccountAge, 10);
-		cp += 10;
-
-		memcpy(cp, "xxxx", 4);
-		cp += 4;
-
-		memcpy(cp, "xx", 2);
-		cp += 2;
-
-		memcpy(cp, "xx", 2);
-		cp += 2;
-
-		memcpy(cp, m_cAccountCountry, 17);
-		cp += 17;
-
-		memcpy(cp, m_cAccountSSN, 28);
-		cp += 28;
-
-		//v1.4334  Quiz 
-
- 		memcpy(cp, m_cAccountQuiz, 45);
-		cp += 45;
-
-		memcpy(cp, m_cAccountAnswer, 20);
-		cp += 20;
-
-		//v1.432 2001 4 30
-		memcpy(cp, G_cCmdLineTokenA_Lowercase, 50);
-
-		iRet = m_pLSock->iSendMsg(cMsg, 214	+50, cKey);
-		break;
+	// MSGID_REQUEST_CREATENEWACCOUNT: removed (CLIENT-018), the typed create_account_request goes through LoginLink.
 
 	case MSGID_GETMINIMUMLOADGATEWAY:
-	case MSGID_REQUEST_LOGIN:
+		// (MSGID_REQUEST_LOGIN shared this body; the typed login_request now goes through LoginLink.)
 		// to Log Server
 		dwp = (DWORD *)(cMsg + DEF_INDEX4_MSGID);
 		*dwp = dwMsgID;
@@ -3042,14 +2991,7 @@ void CGame::ConnectionEstablishHandler(char cWhere)
 		else {
 			// 
 			switch (m_dwConnectMode) {
-			case MSGID_REQUEST_LOGIN:
-				bSendCommand(MSGID_REQUEST_LOGIN, NULL, NULL, NULL, NULL, NULL, NULL);
-				break;
-
-			case MSGID_REQUEST_CREATENEWACCOUNT:
-				// 새 계정 생성을 요구하는 메시지를 전송한다. 
-				bSendCommand(MSGID_REQUEST_CREATENEWACCOUNT, NULL, NULL, NULL, NULL, NULL, NULL);
-				break;
+			// MSGID_REQUEST_LOGIN and MSGID_REQUEST_CREATENEWACCOUNT: removed (CLIENT-018), see LoginLink.
 
 			case MSGID_REQUEST_CREATENEWCHARACTER:
 				bSendCommand(MSGID_REQUEST_CREATENEWCHARACTER, NULL, NULL, NULL, NULL, NULL, NULL);
@@ -15062,6 +15004,155 @@ void CGame::LogRecvMsgHandler(char * pData)
 	LogResponseHandler(pData);
 }
 
+// ---------------------------------------------------------------------------------------------
+// CLIENT-018: the Login server through the shared hb::net::client (LoginLink). The legacy XSocket path
+// above stays for the character-select requests until their own ticket.
+// ---------------------------------------------------------------------------------------------
+
+void CGame::LoginLinkInit()
+{
+ LoginLink::handlers stHandlers;
+
+	if (m_pLoginLink != NULL) {
+		delete m_pLoginLink;
+		m_pLoginLink = NULL;
+	}
+
+	stHandlers.on_connected = [this]() {
+		if (m_cGameMode == DEF_GAMEMODE_ONCONNECTING) ChangeGameMode(DEF_GAMEMODE_ONWAITINGRESPONSE);
+	};
+	stHandlers.on_login = [this](const hb::net::login::login_response & stReply, const std::vector<hb::net::character_summary> & characters) {
+		OnLoginLinkLogin(stReply, characters);
+	};
+	stHandlers.on_account = [this](hb::net::login::account_result eResult) {
+		OnLoginLinkAccount(eResult);
+	};
+	stHandlers.on_failed = [this](std::string_view sWhy) {
+		OnLoginLinkFailed(sWhy);
+	};
+
+	m_pLoginLink = new LoginLink(std::string(m_cLogServerAddr), (std::uint16_t)m_iLogServerPort, stHandlers);
+	hb::log::info("login server {}:{} (login.json)", m_cLogServerAddr, m_iLogServerPort);
+}
+
+BOOL CGame::bBeginLoginRequest()
+{
+	if (m_pLoginLink == NULL) return FALSE;
+#ifdef DEF_ACCOUNTLONG
+	return m_pLoginLink->request_login(m_cAccountLong, m_cAccountPassword, m_cWorldServerName) ? TRUE : FALSE;
+#else
+	return m_pLoginLink->request_login(m_cAccountName, m_cAccountPassword, m_cWorldServerName) ? TRUE : FALSE;
+#endif
+}
+
+BOOL CGame::bBeginCreateAccountRequest()
+{
+	if (m_pLoginLink == NULL) return FALSE;
+	return m_pLoginLink->request_create_account(m_cAccountName, m_cAccountPassword, m_cEmailAddr) ? TRUE : FALSE;
+}
+
+void CGame::OnLoginLinkLogin(const hb::net::login::login_response & stReply, const std::vector<hb::net::character_summary> & characters)
+{
+ int i, iCount;
+ const char * pCode;
+
+	if (stReply.result == hb::net::login::login_result::version_mismatch) {
+		ChangeGameMode(DEF_GAMEMODE_ONVERSIONNOTMATCH);
+		return;
+	}
+
+	pCode = LoginResultCode(stReply.result);
+	if (pCode != NULL) {
+		if (stReply.result == hb::net::login::login_result::account_blocked) {
+			m_iBlockYear  = stReply.blocked_until.year;
+			m_iBlockMonth = stReply.blocked_until.month;
+			m_iBlockDay   = stReply.blocked_until.day;
+		}
+		ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
+		ZeroMemory(m_cMsg, sizeof(m_cMsg));
+		strcpy(m_cMsg, pCode);
+		return;
+	}
+
+	// Login ok: the account dates, then the character slots of the select screen.
+	if (stReply.has_account_expiry != 0) {
+		m_iAccntYear  = stReply.account_expiry.year;
+		m_iAccntMonth = stReply.account_expiry.month;
+		m_iAccntDay   = stReply.account_expiry.day;
+	}
+	else m_iAccntYear = m_iAccntMonth = m_iAccntDay = 0;
+	m_iIpYear = m_iIpMonth = m_iIpDay = 0;
+	m_iTimeLeftSecAccount = 0;
+	m_iTimeLeftSecIP = 0;
+
+	for (i = 0; i < 4; i++)
+	if (m_pCharList[i] != NULL) {
+		delete m_pCharList[i];
+		m_pCharList[i] = NULL;
+	}
+
+	iCount = (int)characters.size();
+	if (iCount > 4) iCount = 4;
+	m_iTotalChar = iCount;
+
+	for (i = 0; i < iCount; i++) {
+		const hb::net::character_summary & stChar = characters[i];
+		const std::string_view sName = stChar.name.view();
+		const std::string_view sMap  = stChar.map_name.view();
+		const hb::net::character_appearance & stAppr = stChar.appearance;
+
+		m_pCharList[i] = new class CCharInfo;
+		memcpy(m_pCharList[i]->m_cName, sName.data(), (sName.size() < 10) ? sName.size() : 10);
+		if (stChar.is_valid == 0) {
+			// The character's data file is damaged: a NULL sex is not drawn.
+			m_pCharList[i]->m_sSex = NULL;
+			continue;
+		}
+
+		// One byte per field on the wire, packed back into the 2.20 appearance words the sprites use.
+		m_pCharList[i]->m_sAppr1 = (short)((stAppr.hair_style << 8) | (stAppr.hair_colour << 4) | stAppr.underwear_colour);
+		m_pCharList[i]->m_sAppr2 = (short)((stAppr.weapon << 4) | stAppr.shield);
+		m_pCharList[i]->m_sAppr3 = (short)((stAppr.body_armour << 12) | (stAppr.pants << 8) | (stAppr.helm << 4) | stAppr.arm_armour);
+		m_pCharList[i]->m_sAppr4 = (short)((stAppr.boots << 12) | (stAppr.mantle << 8) | ((stAppr.hides_body_armour != 0) ? 0x80 : 0));
+		m_pCharList[i]->m_iApprColor = (int)(((unsigned int)stAppr.weapon_colour << 28) | ((unsigned int)stAppr.shield_colour << 24)
+			| ((unsigned int)stAppr.armour_colour << 20) | ((unsigned int)stAppr.mantle_colour << 16) | ((unsigned int)stAppr.arm_colour << 12)
+			| ((unsigned int)stAppr.pants_colour << 8) | ((unsigned int)stAppr.boots_colour << 4) | (unsigned int)stAppr.helm_colour);
+		m_pCharList[i]->m_sSex     = stChar.sex;
+		m_pCharList[i]->m_sSkinCol = stChar.skin;
+		m_pCharList[i]->m_sLevel   = stChar.level;
+		m_pCharList[i]->m_iExp     = (int)stChar.experience;
+		m_pCharList[i]->m_sStr = stChar.stats.strength;
+		m_pCharList[i]->m_sVit = stChar.stats.vitality;
+		m_pCharList[i]->m_sDex = stChar.stats.dexterity;
+		m_pCharList[i]->m_sInt = stChar.stats.intelligence;
+		m_pCharList[i]->m_sMag = stChar.stats.magic;
+		m_pCharList[i]->m_sChr = stChar.stats.charisma;
+		m_pCharList[i]->m_iYear   = stChar.last_saved.year;
+		m_pCharList[i]->m_iMonth  = stChar.last_saved.month;
+		m_pCharList[i]->m_iDay    = stChar.last_saved.day;
+		m_pCharList[i]->m_iHour   = stChar.last_saved.hour;
+		m_pCharList[i]->m_iMinute = stChar.last_saved.minute;
+		memcpy(m_pCharList[i]->m_cMapName, sMap.data(), (sMap.size() < 10) ? sMap.size() : 10);
+	}
+
+	ChangeGameMode(DEF_GAMEMODE_ONSELECTCHARACTER);
+	ClearContents_OnSelectCharacter();
+}
+
+void CGame::OnLoginLinkAccount(hb::net::login::account_result eResult)
+{
+	ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
+	ZeroMemory(m_cMsg, sizeof(m_cMsg));
+	strcpy(m_cMsg, AccountResultCode(eResult));
+}
+
+void CGame::OnLoginLinkFailed(std::string_view sWhy)
+{
+	hb::log::warning("login server: {}", sWhy);
+	if ((m_cGameMode == DEF_GAMEMODE_ONCONNECTING) || (m_cGameMode == DEF_GAMEMODE_ONWAITINGRESPONSE))
+		ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
+}
+
 void CGame::UpdateScreen_OnMsg()
 {
  short msX, msY, msZ;
@@ -15162,26 +15253,43 @@ BOOL CGame::bReadLoginConfigFile(char * cFn)
 	//strcpy(m_cLogServerAddr, "211.239.170.86");
 	//m_iLogServerPort = 2849;
 //	m_iLogServerPort = 7964;
-	return TRUE;
-#else
+	// CLIENT-018: these are only the defaults now; login.json below overrides them (it used to be ignored here).
+#endif
+
  ClientData::LoginCfg cfg;
 
-	// cFn is login.json (format "login-config"). Missing or invalid: FALSE, as a missing file was.
-	// An address longer than 15 characters or a port of 0 is rejected, as before; a missing key
-	// leaves the value unchanged.
-	if (ClientData::ReadLoginConfig(cFn, cfg) == false) return FALSE;
+	// cFn is login.json (format "login-config"). Only a MISSING file may keep the built-in defaults (and only
+	// in builds that have them); a malformed file, a wrong-typed field, an address too long for
+	// m_cLogServerAddr (16 bytes) or a port outside 1..65535 is a config error: FALSE, never a silent fallback.
+	// A missing key leaves that value unchanged.
+	switch (ClientData::ReadLoginConfig(cFn, cfg)) {
+	case ClientData::LoginConfigStatus::Ok:
+		break;
+	case ClientData::LoginConfigStatus::Absent:
+#if DEF_LANGUAGE > 3
+		hb::log::warning("{} not found, using the built-in login server {}:{}", cFn, m_cLogServerAddr, m_iLogServerPort);
+		return TRUE;
+#else
+		return FALSE;
+#endif
+	default:
+		hb::log::error("{} is not a valid login config", cFn);
+		return FALSE;
+	}
+
+	// Both values are checked before either is assigned.
+	if (cfg.hasAddress && (cfg.address.size() > sizeof(m_cLogServerAddr) - 1)) {
+		hb::log::error("{}: log_server_address is longer than {} characters", cFn, sizeof(m_cLogServerAddr) - 1);
+		return FALSE;
+	}
+	if (cfg.hasPort && ((cfg.port < 1) || (cfg.port > 65535))) return FALSE;
 
 	if (cfg.hasAddress) {
-		if (cfg.address.size() > 15) return FALSE;
 		ZeroMemory(m_cLogServerAddr, sizeof(m_cLogServerAddr));
 		strcpy(m_cLogServerAddr, cfg.address.c_str());
 	}
-	if (cfg.hasPort) {
-		m_iLogServerPort = cfg.port;
-		if (m_iLogServerPort == 0) return FALSE;
-	}
+	if (cfg.hasPort) m_iLogServerPort = cfg.port;
 	return TRUE;
-#endif
 }
 
 void CGame::ReleaseUnusedSprites()
@@ -24956,6 +25064,7 @@ void CGame::UpdateScreen_OnConnecting()
 			#else
 				ChangeGameMode(DEF_GAMEMODE_ONMAINMENU);
 			#endif
+			if (m_pLoginLink != NULL) m_pLoginLink->cancel();
 			if (m_pLSock != NULL) {
 				delete m_pLSock;
 				m_pLSock = NULL;
@@ -26497,16 +26606,28 @@ void CGame::UpdateScreen_OnCreateNewAccount() // for KOREAN
 	m_cGameModeCount++;
 	if (m_cGameModeCount > 100) m_cGameModeCount = 100;
 
+	// CLIENT-018: fields 4 (name), 5 and 6 (SSN), 8 (quiz) and 9 (answer) are not sent to the Login server.
+	auto fSkipUnused = [](char cFocus, int iStep, char cMax) -> char {
+		while ((cFocus == 4) || (cFocus == 5) || (cFocus == 6) || (cFocus == 8) || (cFocus == 9)) {
+			cFocus += iStep;
+			if (cFocus <= 0) cFocus = cMax;
+			if (cFocus > cMax) cFocus = 1;
+		}
+		return cFocus;
+	};
+
 	if (m_cArrowPressed != 0) {
 		// 화살표키가 눌렸다.
 		switch (m_cArrowPressed) {
 		case 1:
 			m_cCurFocus--;
 			if (m_cCurFocus <= 0) m_cCurFocus = m_cMaxFocus;
+			m_cCurFocus = fSkipUnused(m_cCurFocus, -1, m_cMaxFocus);
 			break;
 		case 3:
 			m_cCurFocus++;
 			if (m_cCurFocus > m_cMaxFocus) m_cCurFocus = 1;
+			m_cCurFocus = fSkipUnused(m_cCurFocus, 1, m_cMaxFocus);
 			break;
 		}
 		m_cArrowPressed = 0;
@@ -26622,15 +26743,9 @@ void CGame::UpdateScreen_OnCreateNewAccount() // for KOREAN
 		else PutString2(311, 291, cAnswer, 200,100,100);
 	}
 
-	if (m_Misc.bCheckValidName(cAnswer) == FALSE)		iFlag = 13;
-	if (m_Misc.bCheckValidName(cTempQuiz) == FALSE)		iFlag = 12;
-	if (strlen(cAnswer) < 4)							iFlag = 11;
-	if (strlen(cTempQuiz) < 10)							iFlag = 10;
-	if (m_Misc.bIsValidSSN(m_cAccountSSN) == FALSE)	iFlag = 8;
 	if (m_Misc.bCheckValidName(cPassword) == FALSE)		iFlag = 7;
 	if (m_Misc.bCheckValidName(cName) == FALSE)			iFlag = 6;
 	if (m_Misc.bIsValidEmail(m_cEmailAddr) == FALSE)	iFlag = 5;
-	if (strlen(m_cAccountCountry) == 0)					iFlag = 4;
 	if (strlen(cConfirm) == 0)							iFlag = 3;
 	if (strlen(cPassword) < 8)							iFlag = 2;
 	if ((strlen(cName) == 0 ))							iFlag = 1;
@@ -26833,6 +26948,7 @@ void CGame::UpdateScreen_OnCreateNewAccount() // for KOREAN
 		case 9:
 			m_cCurFocus++;
 			if (m_cCurFocus > m_cMaxFocus) m_cCurFocus = 1;
+			m_cCurFocus = fSkipUnused(m_cCurFocus, 1, m_cMaxFocus);
 			break;
 
 		case 10:
@@ -26866,14 +26982,12 @@ void CGame::UpdateScreen_OnCreateNewAccount() // for KOREAN
 				return;
 			}
 
-			m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-			m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort, WM_USER_LOGSOCKETEVENT);
-			m_pLSock->bInitBufferSize(30000);
 			// 게임모드 변환 
 			ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 			m_dwConnectMode = MSGID_REQUEST_CREATENEWACCOUNT;
 			ZeroMemory(m_cMsg, sizeof(m_cMsg));
 			strcpy(m_cMsg, "00");
+			if (bBeginCreateAccountRequest() == FALSE) ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 			delete pMI;
 			return;
 
@@ -26910,6 +27024,13 @@ void CGame::UpdateScreen_OnCreateNewAccount() // for KOREAN
 		PlaySound('E', 14, 5);
 
 		switch (iMIbuttonNum) {
+		case 4:
+		case 5:
+		case 6:
+		case 8:
+		case 9:
+			break;	// not sent to the Login server (CLIENT-018)
+
 		default:
 			m_cCurFocus = iMIbuttonNum;
 			break;
@@ -26944,15 +27065,13 @@ void CGame::UpdateScreen_OnCreateNewAccount() // for KOREAN
 				return;
 			}
 
-			m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-			m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort, WM_USER_LOGSOCKETEVENT);
-			m_pLSock->bInitBufferSize(30000);
 
 			// 게임모드 변환 
 			ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 			m_dwConnectMode = MSGID_REQUEST_CREATENEWACCOUNT;
 			ZeroMemory(m_cMsg, sizeof(m_cMsg));
 			strcpy(m_cMsg, "00");
+			if (bBeginCreateAccountRequest() == FALSE) ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 			delete pMI;
 			return;
 		
@@ -27112,14 +27231,12 @@ void CGame::UpdateScreen_OnLogin()
 				strcpy(m_cAccountLong, cName);
 				strcpy(m_cAccountPassword, cPassword);
 				// 접속을 시도요구가 있으면 로그서버로 소켓을 생성하고 연결을 기다린다. 
-				m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-				m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-				m_pLSock->bInitBufferSize(30000);
 				// 게임모드 변환 
 				ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 				m_dwConnectMode = MSGID_REQUEST_LOGIN;
 				ZeroMemory(m_cMsg, sizeof(m_cMsg));
 				strcpy(m_cMsg, "11");
+				if (bBeginLoginRequest() == FALSE) ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 				delete pMI;
 #else
 				// Connect 버튼이 선택된 상태에서 Enter키가 눌렸다.
@@ -27129,14 +27246,12 @@ void CGame::UpdateScreen_OnLogin()
 				strcpy(m_cAccountName, cName);
 				strcpy(m_cAccountPassword, cPassword);
 				// 접속을 시도요구가 있으면 로그서버로 소켓을 생성하고 연결을 기다린다. 
-				m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-				m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-				m_pLSock->bInitBufferSize(30000);
 				// 게임모드 변환 
 				ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 				m_dwConnectMode = MSGID_REQUEST_LOGIN;
 				ZeroMemory(m_cMsg, sizeof(m_cMsg));
 				strcpy(m_cMsg, "11");
+				if (bBeginLoginRequest() == FALSE) ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 				delete pMI;
 #endif
 			}
@@ -27230,14 +27345,12 @@ void CGame::UpdateScreen_OnLogin()
 				strcpy(m_cAccountPassword, cPassword);
 			
 				// 접속을 시도요구가 있으면 로그서버로 소켓을 생성하고 연결을 기다린다. 
-				m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-				m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-				m_pLSock->bInitBufferSize(30000);
 				// 게임모드 변환 
 				ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 				m_dwConnectMode = MSGID_REQUEST_LOGIN;
 				ZeroMemory(m_cMsg, sizeof(m_cMsg));
 				strcpy(m_cMsg, "11");
+				if (bBeginLoginRequest() == FALSE) ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 				delete pMI;
 #else
 				// 이름을 초기화한다. 
@@ -27247,14 +27360,12 @@ void CGame::UpdateScreen_OnLogin()
 				strcpy(m_cAccountPassword, cPassword);
 			
 				// 접속을 시도요구가 있으면 로그서버로 소켓을 생성하고 연결을 기다린다. 
-				m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-				m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-				m_pLSock->bInitBufferSize(30000);
 				// 게임모드 변환 
 				ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 				m_dwConnectMode = MSGID_REQUEST_LOGIN;
 				ZeroMemory(m_cMsg, sizeof(m_cMsg));
 				strcpy(m_cMsg, "11");
+				if (bBeginLoginRequest() == FALSE) ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 				delete pMI;
 #endif
 
@@ -29049,6 +29160,7 @@ void CGame::UpdateScreen_OnWaitingResponse()
 			#else
 				ChangeGameMode(DEF_GAMEMODE_ONMAINMENU);
 			#endif
+			if (m_pLoginLink != NULL) m_pLoginLink->cancel();
 			if (m_pLSock != NULL) {
 				delete m_pLSock;
 				m_pLSock = NULL;
@@ -31041,6 +31153,26 @@ void CGame::UpdateScreen_OnLogResMsg()
 			PutAlignedString(198, 453, 210,  G_cTxt);
 		}
 		
+		break;
+
+	case 'K':
+		PutString_SprFont(172 + 78, 165, "Account locked!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "Please contact the administrator.");
+		break;
+
+	case 'L':
+		PutString_SprFont(172 + 58, 165, "Service not available!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "Please try again later.");
+		break;
+
+	case 'N':
+		PutString_SprFont(172 + 36, 165, "Can not create new account!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "Account creation is disabled.");
+		break;
+
+	case 'O':
+		PutString_SprFont(172 + 36, 165, "Can not create new account!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "The account name is not valid.");
 		break;
 
 	case 'I': // v2.11 성후니 추가 중문 과금용 에라 메세지 글씨 깨져 있어도 안심할것 ㅡㅡ ;		

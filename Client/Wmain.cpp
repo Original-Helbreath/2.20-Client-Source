@@ -19,6 +19,7 @@
 #include "Game.h"
 #include "GlobalDef.h"
 #include "ClientData.h"
+#include "../shared/log/log.h"
 
 #ifdef DEF_HTMLCOMMOM
 	HWND	m_hwndWebCtrl;
@@ -250,6 +251,7 @@ LRESULT CALLBACK WndProc(HWND hWnd,UINT message,WPARAM wParam, LPARAM lParam)
 int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
                LPSTR lpCmdLine, int nCmdShow )
 {
+	hb::log::initialize("Client", "client");
 	// v1.432
 	// v2.171
 	srand((unsigned)time(NULL));
@@ -294,6 +296,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	FreeLibrary(hRichDll);
 #endif
 
+	hb::log::shutdown();
 	return 0;
 }
 

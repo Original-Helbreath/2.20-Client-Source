@@ -185,6 +185,7 @@ v2.14 2 26일 안상하 추가 Sprite File과 MapData와 Content 폴더 변경 T
 #elif DEF_LANGUAGE == 4		// English
 #define DEF_ENGLISHITEM   // 아이템이름 영문화를 위한 정의 함수
 #define DEF_SELECTSERVER
+#define DEF_MAKE_ACCOUNT	// CLIENT-018: New Account is a screen again (it opened the home page), served by the Login server
 
 #elif DEF_LANGUAGE == 5		// Japan
  #define DEF_USING_WIN_IME
