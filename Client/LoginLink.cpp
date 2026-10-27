@@ -63,6 +63,7 @@ struct LoginLink::impl
 		create_list,     // create ok, waiting for the fresh character_list
 		remove,          // sent delete_character_request, waiting for delete_character_response
 		remove_list,     // delete ok, waiting for the fresh character_list
+		enter,           // sent enter_game_request, waiting for enter_game_response
 	};
 
 	impl(std::string host_name, std::uint16_t port_number, handlers callbacks)
@@ -278,6 +279,18 @@ struct LoginLink::impl
 				handler(held_result, characters);
 			return;
 		}
+		case phase::enter:
+		{
+			login::enter_game_response reply{};
+			if (!decode(received, reply))
+				return fail("unexpected frame while waiting for enter_game_response");
+			hb::log::info("login link: enter game reply ({})", static_cast<int>(reply.result));
+			state = phase::idle;
+			if (cb.on_enter)
+				cb.on_enter(reply);
+			scrub(&reply.ticket, sizeof(reply.ticket));  // the handler has copied what it needs
+			return;
+		}
 		case phase::account:
 		{
 			login::create_account_response reply{};
@@ -365,6 +378,18 @@ bool LoginLink::request_delete_character(std::string_view name)
 	if (!encode(request, impl::max_body_bytes, bytes))
 		return false;
 	return m_impl->send_on_session(bytes, impl::phase::remove);
+}
+
+bool LoginLink::request_enter_game(std::string_view character, bool force_login)
+{
+	login::enter_game_request request{};
+	std::vector<std::byte> bytes;
+	if (!request.character.assign(character))
+		return false;
+	request.kind = force_login ? login::enter_kind::force_login : login::enter_kind::normal;
+	if (!encode(request, impl::max_body_bytes, bytes))
+		return false;
+	return m_impl->send_on_session(bytes, impl::phase::enter);
 }
 
 bool LoginLink::has_session() const
@@ -458,6 +483,47 @@ const char* CreateCharacterResultCode(login::character_result result)
 		break;
 	}
 	return "28";  // Can not create new character!
+}
+
+const char* EnterGameResultCode(login::enter_result result)
+{
+	using r = login::enter_result;
+	switch (result)
+	{
+	case r::ok:
+	case r::already_playing:
+		return nullptr;
+	case r::force_disconnect_sent:
+		return "3X";  // the account's connection was asked to close, try again shortly
+	case r::world_unavailable:
+		return "3Y";  // the world server is not running
+	case r::world_full:
+		return "3J";  // World Server Full
+	case r::world_shutting_down:
+		return "3G";  // the game server is shutting down
+	case r::no_such_character:
+		return "3T";  // Not existing character!
+	}
+	return "3Y";
+}
+
+const char* WorldEnterResultCode(hb::net::world::world_enter_result result)
+{
+	using r = hb::net::world::world_enter_result;
+	switch (result)
+	{
+	case r::ok:
+		return nullptr;
+	case r::bad_ticket:
+		return "3D";  // account and character do not match, ask the administrator
+	case r::expired:
+		return "3W";  // the login ticket expired, log in again
+	case r::world_full:
+		return "3J";  // World Server Full
+	case r::shutting_down:
+		return "3G";  // the game server is shutting down
+	}
+	return "3Y";
 }
 
 const char* DeleteCharacterResultCode(login::character_result result)

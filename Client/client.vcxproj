@@ -105,6 +105,7 @@
 		<ClCompile Include="XSocket.cpp" />
 		<ClCompile Include="YWSound.cpp" />
 		<ClCompile Include="LoginLink.cpp" />
+		<ClCompile Include="WorldLink.cpp" />
 	</ItemGroup>
 	<ItemGroup>
 		<!-- CLIENT-018: the shared/ submodule's network, protocol and log code (one implementation for all three programs).
@@ -165,6 +166,7 @@
 		<ClInclude Include="XSocket.h" />
 		<ClInclude Include="YWSound.h" />
 		<ClInclude Include="LoginLink.h" />
+		<ClInclude Include="WorldLink.h" />
 		<ClInclude Include="..\shared\protocol\wire.h" />
 		<ClInclude Include="..\shared\protocol\span_reader.h" />
 		<ClInclude Include="..\shared\protocol\span_writer.h" />
@@ -190,7 +192,7 @@
 	</ItemGroup>
 	<ItemGroup>
 		<!-- Asio is configured for the files that include it (shared\net, LoginLink); the legacy client code is unchanged. -->
-		<ClCompile Update="LoginLink.cpp;..\shared\net\*.cpp">
+		<ClCompile Update="LoginLink.cpp;WorldLink.cpp;..\shared\net\*.cpp">
 			<PreprocessorDefinitions>ASIO_STANDALONE;ASIO_NO_DEPRECATED;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 			<AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
 			<AdditionalIncludeDirectories>$(SolutionDir)shared\protocol;$(SolutionDir)shared\net;$(SolutionDir)shared\log;$(SolutionDir)shared\third_party\asio\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>

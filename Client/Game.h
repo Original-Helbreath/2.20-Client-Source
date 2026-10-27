@@ -31,6 +31,7 @@
 #endif
 #include "XSocket.h"
 #include "LoginLink.h"
+#include "WorldLink.h"
 #include "Sprite.h"
 #include "SpriteID.h"
 #include "Misc.h"
@@ -516,6 +517,8 @@ public:
 	void ApplyCharacterList(const std::vector<hb::net::character_summary> & characters);
 	void OnLoginLinkCharacter(hb::net::login::character_result eResult, const std::vector<hb::net::character_summary> & characters, BOOL bCreate);
 	void OnLoginLinkFailed(std::string_view sWhy);
+	BOOL bBeginEnterGameRequest(BOOL bForceLogin);
+	void OnLoginLinkEnter(const hb::net::login::enter_game_response & stReply);
 	void OnTimer();
 	void LogEventHandler(char * pData);
 	void _ReadMapData(short sPivotX, short sPivotY, char * pData);
@@ -653,7 +656,7 @@ public:
 	class CSprite  * m_pTileSpr[DEF_MAXTILES];
 	class CSprite  * m_pEffectSpr[DEF_MAXEFFECTSPR];
 	class CMapData * m_pMapData;
-	class XSocket * m_pGSock;
+	class WorldLink * m_pGSock;	// CLIENT-021: the World connection (shared hb::net::client), legacy iSendMsg shape
 	class XSocket * m_pLSock;
 	class LoginLink * m_pLoginLink;	// CLIENT-018: the Login server connection (shared hb::net::client), polled from UpdateScreen
 	class CMsg    * m_pChatMsgList[DEF_MAXCHATMSGS];	// 캐릭터 머리말용 채팅 리스트 

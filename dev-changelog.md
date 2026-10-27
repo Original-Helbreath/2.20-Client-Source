@@ -1,16 +1,14 @@
-## Character select through LoginLink
+## Enter the World with the Login ticket
 
 ### Client
 
 **Added**
-- `LoginLink` reads the `character_list` that follows login ok and fills the character-select screen from it.
-- Create Character and Delete send the shared `create_character_request` and `delete_character_request` over the login session, then refresh the list from the reply.
-- Message texts for invalid character name, invalid stats, no free slot, level too high, character not found and delete failed.
+- `WorldLink`, a shared `hb::net::client` World connection: it sends the Login ticket first, then carries game messages as SHARED-003 envelopes, keeping the legacy `iSendMsg` shape. The ticket is wiped from memory after it is sent.
+- A "ticket expired" message screen (code 3W).
 
 **Changed**
-- The Login connection stays open after login ok for the character requests.
+- Entering the game goes through `enter_game_request` on the login session instead of the legacy log socket; each failure shows a message screen.
+- `MSGID_REQUEST_INITPLAYER` is no longer sent; the World's INITPLAYER confirm starts the init sequence.
+- `shared/` moves to SHARED-003.
 
-**Removed**
-- The legacy `XSocket` create-character and delete-character send paths and their reply handlers.
-
-Summary: Client lists, creates and deletes characters through the Login server (2026-10-27)
+Summary: Client enters the World with its Login ticket over the shared network layer (2026-10-27)

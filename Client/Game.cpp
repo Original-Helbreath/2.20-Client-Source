@@ -1109,6 +1109,11 @@ void CGame::UpdateScreen()
 
 	// CLIENT-018: the Login server link has no thread; its replies are handled here, once per frame.
 	if (m_pLoginLink != NULL) m_pLoginLink->poll();
+	// CLIENT-021: the same for the World link; its events are handled right after.
+	if (m_pGSock != NULL) {
+		m_pGSock->poll();
+		OnGameSocketEvent(0, 0);
+	}
 
 	switch (m_cGameMode) {
 #ifdef DEF_MAKE_ACCOUNT
@@ -1279,53 +1284,42 @@ void CGame::CalcViewPoint()
 // 소켓에서 발생한 이벤트에 대한 처리를 한다.
 void CGame::OnGameSocketEvent(WPARAM wParam, LPARAM lParam)
 {
- int iRet;
- char * pData;
- DWORD  dwMsgSize;
-	
-	if (m_pGSock == NULL) return;
+ WorldLink::event stEvent;
 
-	iRet = m_pGSock->iOnSocketEvent(wParam, lParam);	
-	switch (iRet) {
-	case DEF_XSOCKEVENT_CONNECTIONESTABLISH:
-		// *** 소켓이 연결되었다. 해당 커넥션에 따라 처리한다.
-		ConnectionEstablishHandler(DEF_SERVERTYPE_GAME);
-		break;
+	// CLIENT-021: the game socket is the WorldLink. It has no window messages; its events are drained here
+	// (once per frame from UpdateScreen). A handler may delete m_pGSock, so it is checked every round.
+	while ((m_pGSock != NULL) && m_pGSock->next_event(stEvent)) {
+		switch (stEvent.kind) {
+		case WorldLink::event_kind::entered:
+			// The World accepted the ticket. Its INITPLAYER confirm comes next; nothing is sent first.
+			ConnectionEstablishHandler(DEF_SERVERTYPE_GAME);
+			break;
 
-	case DEF_XSOCKEVENT_READCOMPLETE:
-		// *** 메시지가 수신되었다.
-		pData = m_pGSock->pGetRcvDataPointer(&dwMsgSize);
-		GameRecvMsgHandler(dwMsgSize, pData);
-		// 서버로부터의 응답시간 체크를 위해 타임값 기록 
-		m_dwTime = G_dwGlobalTime;
-		break;
-	
-	case DEF_XSOCKEVENT_SOCKETCLOSED:
-		// *** 서버와의 연결이 끊어졌다. 
-		ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
-		
-		delete m_pGSock;
-		m_pGSock = NULL;
-		break;
-	
-	case DEF_XSOCKEVENT_SOCKETERROR:
-		// *** 서버와의 연결상태에 에러가 발생했다.
-		ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
-		
-		delete m_pGSock;
-		m_pGSock = NULL;
-		break;
-	
-	case DEF_XSOCKEVENT_CRITICALERROR:
-		// *** 치명적인 에러가 발생했다. 프로그램을 종료해야만 한다.
-		delete m_pGSock;
-		m_pGSock = NULL;
+		case WorldLink::event_kind::message:
+			// One legacy game message (DWORD id, WORD type, payload).
+			GameRecvMsgHandler((DWORD)stEvent.body.size(), stEvent.body.data());
+			// 서버로부터의 응답시간 체크를 위해 타임값 기록
+			m_dwTime = G_dwGlobalTime;
+			break;
 
-		if (G_pCalcSocket != NULL) {
-			delete G_pCalcSocket;
-			G_pCalcSocket = NULL;
+		case WorldLink::event_kind::refused:
+			// world_enter_response was not ok: the reason has its own message screen.
+			hb::log::warning("world server refused the entry ({})", static_cast<int>(stEvent.result));
+			ZeroMemory(m_cMsg, sizeof(m_cMsg));
+			strcpy(m_cMsg, WorldEnterResultCode(stEvent.result));
+			ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
+			delete m_pGSock;
+			m_pGSock = NULL;
+			break;
+
+		case WorldLink::event_kind::closed:
+			// 서버와의 연결이 끊어졌다.
+			hb::log::warning("world server connection lost: {}", stEvent.text);
+			ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
+			delete m_pGSock;
+			m_pGSock = NULL;
+			break;
 		}
-		break;
 	}
 }
 
@@ -2896,7 +2890,8 @@ void CGame::ConnectionEstablishHandler(char cWhere)
 	switch (cWhere) {
 	case DEF_SERVERTYPE_GAME:
 		// 이름과 패스워드를 전송하고 데이터 초기화 시그널을 기다린다.
-		bSendCommand(MSGID_REQUEST_INITPLAYER, NULL, NULL, NULL, NULL, NULL, NULL);
+		// CLIENT-021: MSGID_REQUEST_INITPLAYER is no longer sent. The World has the character from
+		// world_enter_request; its INITPLAYER confirm (InitPlayerResponseHandler) starts the init sequence.
 		break;
 
 	case DEF_SERVERTYPE_LOG:
@@ -14561,15 +14556,8 @@ void CGame::LogResponseHandler(char * pData)
 			memcpy(m_cGameServerName, cp, 20);
 			cp += 20;
 
-			// 게임서버로의 접속을 시도한다. 
-			m_pGSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-
-#ifdef DEF_USING_GATEWAY
-			m_pGSock->bConnect(m_cLogServerAddr, m_iLogServerPort, WM_USER_GAMESOCKETEVENT);   // v2.04 Gateway 사용시
-#else 
-			m_pGSock->bConnect(cGameServerAddr, iGameServerPort, WM_USER_GAMESOCKETEVENT); // v2.04 Gateway
-#endif
-			m_pGSock->bInitBufferSize(30000);
+			// CLIENT-021: the legacy log-server enter reply is no longer used; the game connection is made by
+			// OnLoginLinkEnter from enter_game_response (WorldLink).
 		}
 		break;
 
@@ -14695,6 +14683,9 @@ void CGame::LoginLinkInit()
 	};
 	stHandlers.on_delete = [this](hb::net::login::character_result eResult, const std::vector<hb::net::character_summary> & characters) {
 		OnLoginLinkCharacter(eResult, characters, FALSE);
+	};
+	stHandlers.on_enter = [this](const hb::net::login::enter_game_response & stReply) {
+		OnLoginLinkEnter(stReply);
 	};
 	stHandlers.on_failed = [this](std::string_view sWhy) {
 		OnLoginLinkFailed(sWhy);
@@ -14858,6 +14849,42 @@ void CGame::OnLoginLinkCharacter(hb::net::login::character_result eResult, const
 	ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
 	ZeroMemory(m_cMsg, sizeof(m_cMsg));
 	strcpy(m_cMsg, (bCreate != FALSE) ? CreateCharacterResultCode(eResult) : DeleteCharacterResultCode(eResult));
+}
+
+// CLIENT-021: enter the game with the selected character (m_cPlayerName) over the login session.
+BOOL CGame::bBeginEnterGameRequest(BOOL bForceLogin)
+{
+	if (m_pLoginLink == NULL) return FALSE;
+	return m_pLoginLink->request_enter_game(std::string_view(m_cPlayerName, strnlen(m_cPlayerName, 10)), bForceLogin != FALSE) ? TRUE : FALSE;
+}
+
+// The enter_game reply: ok names the World to connect to; anything else has a legacy message screen.
+void CGame::OnLoginLinkEnter(const hb::net::login::enter_game_response & stReply)
+{
+ const char * pCode;
+
+	if (stReply.result == hb::net::login::enter_result::ok) {
+		const std::string_view sHost = stReply.world_host.view();
+		if (m_pGSock != NULL) {
+			delete m_pGSock;
+			m_pGSock = NULL;
+		}
+		hb::log::info("entering world {}:{}", sHost, stReply.world_port);
+		m_pGSock = new WorldLink(std::string(sHost), stReply.world_port, stReply.ticket,
+			std::string_view(m_cPlayerName, strnlen(m_cPlayerName, 10)));
+		ChangeGameMode(DEF_GAMEMODE_ONWAITINGRESPONSE);
+		return;
+	}
+
+	if (stReply.result == hb::net::login::enter_result::already_playing) {
+		ChangeGameMode(DEF_GAMEMODE_ONQUERYFORCELOGIN);
+		return;
+	}
+
+	pCode = EnterGameResultCode(stReply.result);
+	ChangeGameMode(DEF_GAMEMODE_ONLOGRESMSG);
+	ZeroMemory(m_cMsg, sizeof(m_cMsg));
+	strcpy(m_cMsg, (pCode != NULL) ? pCode : "3Y");
 }
 
 void CGame::OnLoginLinkFailed(std::string_view sWhy)
@@ -20917,15 +20944,15 @@ void CGame::UpdateScreen_OnSelectCharacter()
 				if (m_Misc.bCheckValidString(m_cPlayerName) == TRUE) {
 					m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN]->_iCloseSprite();
 					m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU]->_iCloseSprite();
-					m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-					m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-					m_pLSock->bInitBufferSize(30000);
 					// 게임모드 변환 
 					ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 					m_dwConnectMode  = MSGID_REQUEST_ENTERGAME;
 					m_wEnterGameType = DEF_ENTERGAMEMSGTYPE_NEW;
 					ZeroMemory(m_cMsg, sizeof(m_cMsg));
 					strcpy(m_cMsg,"33");
+					// CLIENT-021: the typed enter_game_request over the login session (LoginLink), then WorldLink.
+					if (bBeginEnterGameRequest(FALSE) == FALSE)
+						ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 					
 					// v1.43
 					ZeroMemory(m_cMapName, sizeof(m_cMapName));
@@ -20994,15 +21021,15 @@ void CGame::UpdateScreen_OnSelectCharacter()
 						if (m_Misc.bCheckValidString(m_cPlayerName) == TRUE) {
 							m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN]->_iCloseSprite();
 							m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU]->_iCloseSprite();
-							m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-							m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-							m_pLSock->bInitBufferSize(30000);
 							// 게임모드 변환 
 							ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 							m_dwConnectMode  = MSGID_REQUEST_ENTERGAME;
 							m_wEnterGameType = DEF_ENTERGAMEMSGTYPE_NEW;
 							ZeroMemory(m_cMsg, sizeof(m_cMsg));
 							strcpy(m_cMsg,"33");
+							// CLIENT-021: the typed enter_game_request over the login session (LoginLink), then WorldLink.
+							if (bBeginEnterGameRequest(FALSE) == FALSE)
+								ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 
 							// v1.43
 							ZeroMemory(m_cMapName, sizeof(m_cMapName));
@@ -21038,15 +21065,15 @@ void CGame::UpdateScreen_OnSelectCharacter()
 					if (m_Misc.bCheckValidString(m_cPlayerName) == TRUE) {
 						m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN]->_iCloseSprite();
 						m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU]->_iCloseSprite();
-						m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-						m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-						m_pLSock->bInitBufferSize(30000);
 						// 게임모드 변환 
 						ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 						m_dwConnectMode  = MSGID_REQUEST_ENTERGAME;
 						m_wEnterGameType = DEF_ENTERGAMEMSGTYPE_NEW;
 						ZeroMemory(m_cMsg, sizeof(m_cMsg));
 						strcpy(m_cMsg,"33");
+						// CLIENT-021: the typed enter_game_request over the login session (LoginLink), then WorldLink.
+						if (bBeginEnterGameRequest(FALSE) == FALSE)
+							ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 
 						// v1.43
 						ZeroMemory(m_cMapName, sizeof(m_cMapName));
@@ -21188,15 +21215,15 @@ void CGame::UpdateScreen_OnSelectCharacter()
 				if (m_Misc.bCheckValidString(m_cPlayerName) == TRUE) {
 					m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN]->_iCloseSprite();
 					m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU]->_iCloseSprite();
-					m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-					m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-					m_pLSock->bInitBufferSize(30000);
 					// 게임모드 변환 
 					ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 					m_dwConnectMode  = MSGID_REQUEST_ENTERGAME;
 					m_wEnterGameType = DEF_ENTERGAMEMSGTYPE_NEW;
 					ZeroMemory(m_cMsg, sizeof(m_cMsg));
 					strcpy(m_cMsg,"33");
+					// CLIENT-021: the typed enter_game_request over the login session (LoginLink), then WorldLink.
+					if (bBeginEnterGameRequest(FALSE) == FALSE)
+						ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 					
 					// v1.43
 					ZeroMemory(m_cMapName, sizeof(m_cMapName));
@@ -21263,15 +21290,15 @@ void CGame::UpdateScreen_OnSelectCharacter()
 						if (m_Misc.bCheckValidString(m_cPlayerName) == TRUE) {
 							m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN]->_iCloseSprite();
 							m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU]->_iCloseSprite();
-							m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-							m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-							m_pLSock->bInitBufferSize(30000);
 							// 게임모드 변환 
 							ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 							m_dwConnectMode  = MSGID_REQUEST_ENTERGAME;
 							m_wEnterGameType = DEF_ENTERGAMEMSGTYPE_NEW;
 							ZeroMemory(m_cMsg, sizeof(m_cMsg));
 							strcpy(m_cMsg,"33");
+							// CLIENT-021: the typed enter_game_request over the login session (LoginLink), then WorldLink.
+							if (bBeginEnterGameRequest(FALSE) == FALSE)
+								ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 
 							// v1.43
 							ZeroMemory(m_cMapName, sizeof(m_cMapName));
@@ -21307,15 +21334,15 @@ void CGame::UpdateScreen_OnSelectCharacter()
 					if (m_Misc.bCheckValidString(m_cPlayerName) == TRUE) {
 						m_pSprite[DEF_SPRID_INTERFACE_ND_LOGIN]->_iCloseSprite();
 						m_pSprite[DEF_SPRID_INTERFACE_ND_MAINMENU]->_iCloseSprite();
-						m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-						m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort +(rand()%1), WM_USER_LOGSOCKETEVENT);
-						m_pLSock->bInitBufferSize(30000);
 						// 게임모드 변환 
 						ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 						m_dwConnectMode  = MSGID_REQUEST_ENTERGAME;
 						m_wEnterGameType = DEF_ENTERGAMEMSGTYPE_NEW;
 						ZeroMemory(m_cMsg, sizeof(m_cMsg));
 						strcpy(m_cMsg,"33");
+						// CLIENT-021: the typed enter_game_request over the login session (LoginLink), then WorldLink.
+						if (bBeginEnterGameRequest(FALSE) == FALSE)
+							ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 
 						// v1.43
 						ZeroMemory(m_cMapName, sizeof(m_cMapName));
@@ -28531,15 +28558,15 @@ void CGame::UpdateScreen_OnQueryForceLogin()
 		switch (iMIbuttonNum) {
 		case 1:
 			// 강제 접속한다. 
-			m_pLSock = new class XSocket(m_hWnd, DEF_SOCKETBLOCKLIMIT);
-			m_pLSock->bConnect(m_cLogServerAddr, m_iLogServerPort, WM_USER_LOGSOCKETEVENT);
-			m_pLSock->bInitBufferSize(30000);
 			// 게임모드 변환 
 			ChangeGameMode(DEF_GAMEMODE_ONCONNECTING);
 			m_dwConnectMode  = MSGID_REQUEST_ENTERGAME;
 			m_wEnterGameType = DEF_ENTERGAMEMSGTYPE_NOENTER_FORCEDISCONN;
 			ZeroMemory(m_cMsg, sizeof(m_cMsg));
 			strcpy(m_cMsg,"33");
+			// CLIENT-021: the typed enter_game_request over the login session (LoginLink), then WorldLink.
+			if (bBeginEnterGameRequest(TRUE) == FALSE)
+				ChangeGameMode(DEF_GAMEMODE_ONCONNECTIONLOST);
 			delete pMI;
 			return;
 
@@ -30919,6 +30946,11 @@ void CGame::UpdateScreen_OnLogResMsg()
 	case 'V':
 		PutString_SprFont(172 + 36, 165, "Can not delete character!", 7,0,0);
 		PutAlignedString(198, 453, 210,  "Please try again later.");
+		break;
+
+	case 'W': // CLIENT-021: the World refused an expired login ticket
+		PutString_SprFont(172 + 36, 165, "Can not connect to game server!", 7,0,0);
+		PutAlignedString(198, 453, 210,  "The login ticket expired. Please log in again.");
 		break;
 
 	case 'I': // v2.11 성후니 추가 중문 과금용 에라 메세지 글씨 깨져 있어도 안심할것 ㅡㅡ ;		

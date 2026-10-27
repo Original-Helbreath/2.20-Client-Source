@@ -8,6 +8,7 @@
 #pragma once
 
 #include "../shared/protocol/login_messages.h"
+#include "../shared/protocol/world_messages.h"
 
 #include <cstdint>
 #include <functional>
@@ -30,6 +31,8 @@ public:
 		// The create_character reply (CLIENT-019). characters holds the fresh character_list when the result
 		// is ok, else it is empty and the session stays open.
 		std::function<void(hb::net::login::character_result, const std::vector<hb::net::character_summary>&)> on_create;
+		// The enter_game reply (CLIENT-021). On ok it names the World address and the session ticket.
+		std::function<void(const hb::net::login::enter_game_response&)> on_enter;
 		// The delete_character reply, shaped like on_create.
 		std::function<void(hb::net::login::character_result, const std::vector<hb::net::character_summary>&)> on_delete;
 		// No reply will come: resolve or connect failed, the connection closed first, or the reply was
@@ -65,6 +68,10 @@ public:
 	bool request_create_character(const new_character& fields);
 	bool request_delete_character(std::string_view name);
 
+	// CLIENT-021: asks to enter the game with a character, over the login session. The reply goes to on_enter.
+	// force_login asks the Login server to disconnect a session that is already playing it.
+	bool request_enter_game(std::string_view character, bool force_login);
+
 	// True after a login ok (and its character list) until the connection closes or is cancelled.
 	bool has_session() const;
 
@@ -91,3 +98,7 @@ const char* AccountResultCode(hb::net::login::account_result result);
 // screen behind the message (2 create character, 3 character select), the second the text.
 const char* CreateCharacterResultCode(hb::net::login::character_result result);
 const char* DeleteCharacterResultCode(hb::net::login::character_result result);
+// CLIENT-021: the message code for a refused enter_game (null for ok and already_playing, which have
+// their own screens) and for a refused world_enter_response (null for ok). All return to the character select.
+const char* EnterGameResultCode(hb::net::login::enter_result result);
+const char* WorldEnterResultCode(hb::net::world::world_enter_result result);

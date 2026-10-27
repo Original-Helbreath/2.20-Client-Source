@@ -1,6 +1,6 @@
-## Character select through LoginLink
+## Enter the World with the Login ticket
 
-**Added**
-- The character-select screen shows your characters, and you can create and delete them.
+**Changed**
+- Choosing a character connects you to the World server with a one-time ticket from the Login server.
 
-Summary: Character select works with the new servers (2026-10-27)
+Summary: Entering the game works with the new servers (2026-10-27)
